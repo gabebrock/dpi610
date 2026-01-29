@@ -1,0 +1,26 @@
+VARIABLE,DESCRIPTION
+id,ID number for voter
+state,State of Voter. This data is restricted to NC
+age,Age of Voter at time of voter file snapshot
+gender,Voter's gender identity
+party,"Voter's party, as listed in state voter file; NPA refers to No Party Affiliation"
+race,"Voter's race, as listed in state voter file: A - Asian, B - Black, C - Caucasian, H - Hispanic, M - Middle Eastern, N - Native American"
+socioecon_bg,Description of socioeconomic characteristics of voter's census block group
+familyincome,Estimate of HH income
+density,"Census Designation of density: U - Urban, C - Cluster, R - Rural"
+ever_donor,Denotes confirmed information that Voter has donated money
+voted2008,Voted in 2008 general election
+voted2010,Voted in 2010 general election
+voted2012,Voted in 2012 general election
+voted2014,Voted in 2014 general election
+vote2012_prob,Ex ante Predicted probability that person voted in 2012
+vote2014_prob,Ex ante Predicted probability that person voted in 2014
+ideology_score,"Score denoting estimated voter ideology; 0 is most conservative, 100 most liberal"
+dem_score,Score denoting likelihood that Voter is a Democrat; Ranges from 0 to 100
+dem2012_score,Score denoting likelihood that Voter was a Democrat in 2012; Ranges from 0 to 100
+homeowner_score,"Score ranking likelihood of owning own home, from 1 to 9"
+college_grad_prob,Probability voter graduated from college
+gun_owner_prob,Probability voter owns a gun
+hunter_prob,Probability voter is a hunter
+married_prob,Probability voter is married
+religion,"Religion Prediction (Based on ethnicity, not a great estimate)"
