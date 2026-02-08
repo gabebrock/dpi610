@@ -44,7 +44,7 @@ Voter files are essential tools for political campaigns. They contain informatio
 
 Use the `glimpse()` function to examine the structure of the `nc` dataset. How many observations (voters) are in the dataset? How many variables are available?
 
-## Answer 1(a)
+### Answer 1(a)
 
 ```{r}
 
@@ -62,7 +62,7 @@ nrow <- nc %>%
 
 Examine the variables related to past voting behavior: `voted2008`, `voted2010`, `voted2012`, and `voted2014`. What proportion of voters in the dataset voted in each of these elections? Create a summary table showing the turnout rate for each year. Which election had the highest turnout? Does this pattern match what you would expect based on the types of elections held in these years?
 
-## Answer 1(b)
+### Answer 1(b)
 
 ```{r}
 
@@ -75,18 +75,19 @@ nc %>%
   ) %>%
   pivot_longer(
     cols = everything(),
-    names_to = "Election Year",
-    values_to = "Turnout Rate"
+    names_to = "year",
+    values_to = "turnout"
   )
 
 ```
+
 - The 2012 election had the highest turnout, followed by 2008. This is what I'd expect since these are presidential election years, which typically have higher turnout than midterm elections like 2010 and 2014. 
 
 ## Question 1(c)
 
 Examine the distribution of party registration in the `nc` data using the `party` variable. What proportion of voters are registered as Democrats (DEM), Republicans (REP), No Party Affiliation (NPA), and Libertarian (LIB)? Create a bar chart showing the distribution of party registration.
 
-## Answer 1(c)
+### Answer 1(c)
 
 ```{r}
 
@@ -110,7 +111,7 @@ nc %>%
 
 Create a new variable called `consistent_voter` that equals 1 if a person voted in both 2008 and 2012 (both presidential elections), and 0 otherwise. What proportion of voters in the dataset are consistent voters by this definition? How does this proportion differ by party registration?
 
-## Answer 1(d)
+### Answer 1(d)
 
 ```{r}
 
@@ -131,7 +132,7 @@ nc <- nc %>%
 
 Examine the relationship between age and voter turnout in 2014. Group voters into the following age categories: 18-29, 30-44, 45-64, and 65+. Calculate the turnout rate in 2014 for each age group. Create a bar chart showing these turnout rates. What pattern do you observe?
 
-## Answer 1(e)
+### Answer 1(e)
 
 ```{r}
 
@@ -140,48 +141,81 @@ nc %>%
                                age >= 30 & age <= 44 ~ "30-44",
                                age >= 45 & age <= 64 ~ "45-64",
                                age >= 65             ~ "65+")) %>%
-  ggplot(aes(age_group)) +
-  geom_bar()
+  group_by(age_group) %>%
+  summarize(n = n()) %>%
+  mutate(prop = round(n / sum(n), 4)) %>%
+  ggplot(aes(x = age_group, y = prop)) +
+  geom_col()
 
 ```
+
+- The bar graph suggests that as people get older they they vote more until retirement age (65+).
 
 \newpage
 # Part 2: Introduction to Randomized Experiments
 
 You are employed at a political consulting firm working on several political races in Florida in 2020. Your boss has assigned you to look back over data gathered from an experiment conducted by your firm preceding the 2014 general election that (for some strange reason) was never analyzed (the data set is named `fl` and pre-loaded).
 
-In the experiment, the firm mailed postcards to a randomly selected set of registered voters, showing the recipient their past turnout history and comparing it to the level of participation of the typical person in their state.^[The data comes from the replication archive of the paper "The Generalizability of Social Pressure Effects on Turnout Across High-Salience Electoral Contexts: Field Experimental Evidence From 1.96 Million Citizens in 17 States" by Alan Gerber, Greg Huber, Albert Fang, and Andrew Gooch.] Your task is to determine what lessons, if any, can be drawn from this experiment and applied to future efforts at boosting turnout among target voters.
+In the experiment, the firm mailed postcards to a randomly selected set of registered voters, showing the recipient their past turnout history and comparing it to the level of participation of the typical person in their state.^[The data comes from the replication archive of the paper "The Generalizability of Social Pressure Effects on Turnout Across High-Salience Electoral Contexts: Field Experimental Evidence From 1.96 Million Citizens in 17 States" by Alan Gerber, Greg Huber, Albert Fang, and Andrew Gooch.] 
+
+Your task is to determine what lessons, if any, can be drawn from this experiment and applied to future efforts at boosting turnout among target voters.
 
 ## Question 2(a)
 
 The 2014 American Community Survey (ACS) estimates that the demographic breakdown (in terms of Race) in Florida is the following:
 
-| Race     | Pct  |
-|----------|------|
-| White    | 56.6 |
-| Black    | 15.4 |
-| Hispanic | 23.3 |
-| Other    | 4.7  |
+```{r}
+
+race_fl <- c("White", "Black", "Hispanic", "Other")
+pct_race_fl <- c("56.6", "15.4", "23.3", "4.7")
+
+fl_acs <- tibble(race = race_fl,
+                 pct_pop = as.numeric(pct_race_fl)
+ )
+
+fl_acs
+
+```
 
 How does the demographic breakdown of the sample of voters in our `fl` data compare to the ACS estimates in terms of race? Use the `race` variable to compute the proportion of racial categories.
 Briefly interpret the result.
 
-## Answer 2(a)
+### Answer 2(a)
 
 ```{r}
-#Insert Answer Here
+
+fl %>%
+  group_by(race) %>% # group by race (B,W,H,O)
+  summarize(n = n()) %>% # count number of voters of each race
+  mutate(pct_vote = (round(n / sum(n), 3))*100,
+         race = recode_values(race, "B" ~ "Black", # recode race in fl to match fl_acs
+                                    "W" ~ "White", 
+                                    "H" ~ "Hispanic", 
+                                    "O" ~ "Other")) %>%
+  select(!n) %>% # select just race and pcts
+  left_join(fl_acs) %>% # join voter data with ACS data
+  mutate(diff = pct_pop - pct_vote) # find pct differential
 
 ```
+
+- Based on the proportion differentials, our sample under represented Whites by 22% and over represented Blacks by 12% and Hispanics by 9%.
 
 ## Question 2(b)
 
 In terms of gender, the 2014 ACS estimates were that 51.1 percent of the population in Florida is female. How does our sample compare?
 
-## Answer 2(b)
+### Answer 2(b)
 ```{r}
-#Insert Answer Here
+
+pct_female_fl_acs <- 51.1
+
+pct_female_fl <- fl %>%
+  summarize(pct_female = round(mean(female), 3)*100) %>%
+  pull(pct_female)
 
 ```
+
+- Our samples over represents female voters by 16.6%, the proportion of female voters in our samples is `r pct_female_fl` and the true prop of women is `r pct_female_fl_acs`.
 
 ## Question 2(c)
 
@@ -195,12 +229,38 @@ In terms of turnout, the breakdown between 2006 and 2014 in Florida^[Available a
 | 2012     | 72   |
 | 2014     | 51   |
 
+```{r}
+
+election_yrs <- c(2006, 2008, 2010, 2012, 2014)
+election_pcts <- c(47, 75, 49, 72, 51)
+
+fl_election_turnout <- tibble(year = election_yrs,
+                              pct = election_pcts
+ )
+
+fl_election_turnout
+
+```
+
 How does our sample compare?
 
-## Answer 2(c)
+### Answer 2(c)
 
 ```{r}
-#Insert Answer Here
+
+fl %>%
+  summarize(
+    "2008" = round(mean(voted08, na.rm = TRUE), 2)*100,
+    "2010" = round(mean(voted10, na.rm = TRUE), 2)*100,
+    "2012" = round(mean(voted12, na.rm = TRUE), 2)*100,
+    "2014" = round(mean(voted14, na.rm = TRUE), 2)*100
+  ) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "year",
+    values_to = "turnout"
+)
+  
 
 ```
 
@@ -210,21 +270,32 @@ One reason why randomized experiments allow us to estimate the causal impact of 
 
 Is the turnout history of subjects in the experiment between 2006 and 2012 balanced between treatment and control?
 
-## Answer 2(d)
+### Answer 2(d)
 
 ```{r}
-#Insert Answer Here
+
+fl %>%
+  group_by(treat) %>%
+  summarize(
+    "2008" = round(mean(voted08, na.rm = TRUE), 2)*100,
+    "2010" = round(mean(voted10, na.rm = TRUE), 2)*100,
+    "2012" = round(mean(voted12, na.rm = TRUE), 2)*100,
+    "2014" = round(mean(voted14, na.rm = TRUE), 2)*100
+  )
 
 ```
+
+- 
 
 ## Question 2(e)
 
 Are gender, marriage, age and race balanced between treatment and control?
 
-## Answer 2(e)
+### Answer 2(e)
 
 ```{r}
-#Insert Answer Here
+
+
 
 ```
 
@@ -232,10 +303,11 @@ Are gender, marriage, age and race balanced between treatment and control?
 
 What is the overall 2014 turnout rate for people in the sample? What is the 2014 turnout rate for people in the treatment group? In the control group? What is the estimate of the average treatment effect (ATE) from the experiment?
 
-## Answer 2(f)
+### Answer 2(f)
 
 ```{r}
-#Insert answer here
+
+
 
 ```
 
@@ -243,6 +315,6 @@ What is the overall 2014 turnout rate for people in the sample? What is the 2014
 
 Based on your answers to Questions 2(d), 2(e), and 2(f), what can you conclude about the effectiveness of the social pressure mailing intervention? Was the experiment properly randomized? Did the treatment have an effect on voter turnout?
 
-## Answer 2(g)
+### Answer 2(g)
 
 _Insert answer here._
