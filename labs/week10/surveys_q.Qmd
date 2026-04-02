@@ -1,0 +1,456 @@
+---
+title: "Measuring and Analyzing Opinions"
+subtitle: "DPI 610"
+format: pdf
+fig-align: center
+
+execute:
+  echo: true
+  include: true
+  message: false
+  warning: false
+  
+---
+
+```{r}
+#| label: setup
+#| echo: false
+
+# Load libraries
+library(tidyverse)
+library(survey)
+library(srvyr)
+library(janitor)
+library(broom)
+
+load("week10.RData")
+
+```
+
+:::{.callout-note title="Learning Objectives"}
+By the end of this lab, you will be able to:
+
+1. Apply survey weights using the `srvyr` package to compute weighted proportions and means
+2. Compare weighted and unweighted survey estimates and interpret the differences
+3. Compute poststratification weights to match a survey sample to known population characteristics
+4. Explore and visualize cross-national survey data
+:::
+
+## Pre-Lab Exercise (Complete Before Class)
+
+**Step 1: Explore the Data**
+
+Use `glimpse()` to examine the `cces16` dataset. How many rows and columns does it have? What does each row represent?
+
+```{r}
+#| label: prelab-step1
+#| eval: false
+
+glimpse(cces16)
+```
+
+*Your answer:*
+
+**Step 2: Unweighted vs. Weighted Estimates**
+
+The code below creates a survey design object that applies pre-election survey weights, then compares unweighted and weighted proportions for gender and education. Run the code, then answer the question below.
+
+```{r}
+#| label: prelab-step2
+
+# Create survey design with pre-election weights
+cces16pre <- cces16 %>%
+  as_survey_design(weights = weight)
+
+# Unweighted: gender
+cces16 %>%
+  tabyl(gender)
+
+# Weighted: gender
+cces16pre %>%
+  group_by(gender) %>%
+  summarise(percent_weighted = survey_prop())
+
+# Unweighted: education
+cces16 %>%
+  tabyl(educ) %>%
+  filter(educ != "")
+
+# Weighted: education
+cces16pre %>%
+  group_by(educ) %>%
+  summarise(percent_weighted = survey_prop())
+```
+
+Compare the unweighted and weighted proportions for gender and education. What do you notice about how the weights adjust these distributions? What does this tell you about who is over- or under-represented in the raw survey sample?
+
+*Your answer:*
+
+---
+
+\newpage
+
+# Survey Weights
+
+Many surveys provide survey weights that correct for differences in the survey sample and the underlying population. Today we will start by using CCES and Pew Research data to familiarize ourselves with a survey workflow using the **srvyr** package. We will work through a few problems together. Then you will have a chance to explore some survey data on your own.
+
+The `weight` variable in `cces16` data is used for respondents answering pre-election questions; the `weight_post` variable is used for respondents answering post-election questions.
+
+Below, we create survey design objects with `as_survey_design()`, specifying the weights.
+
+```{r}
+#| label: load-data
+
+# Pre-election weights
+cces16pre <- cces16 %>%
+  as_survey_design(weights = weight)
+
+# Post-election weights
+cces16post <- cces16 %>%
+  filter(!is.na(weight_post)) %>%
+  as_survey_design(weights = weight_post)
+```
+
+:::{.callout-note title="Guided vs. Independent Work"}
+In **Part 1** (Questions 1–3), we work through the analysis together — answers are provided so you can follow along and build intuition. In **Part 2** (the European Social Survey), you will apply these tools independently.
+:::
+
+### Question 1
+
+Using the survey weights, calculate the share of respondents who said they intended to vote for Clinton and Trump in 2016 (`intent_pres_16`) before the election. Also compare weighted vs. unweighted estimates.
+
+### Answer 1
+```{r}
+#| label: Q1
+
+# Unweighted proportions
+cces16 %>%
+  filter(str_detect(intent_pres_16,"Clinton|Trump")) %>%
+  tabyl(intent_pres_16) %>%
+  filter(str_detect(intent_pres_16,"Clinton|Trump"))
+
+# Weighted proportions of each intent_pres_16 category
+cces16pre %>%
+  filter(str_detect(intent_pres_16,"Clinton|Trump")) %>%
+  group_by(intent_pres_16) %>%
+  summarise(percent_weighted = survey_prop()) %>%
+  select(intent_pres_16, percent_weighted, percent_weighted_se)
+```
+Notice that the effect of the survey weights is to upweight respondents with a Trump vote and downweight respondents with a Clinton vote. This is consistent with the initial sample of survey respondents not matching population demographics on characteristics such as education. For example, see below at how the weights alter the education distribution in the sample.
+
+What does the direction of the weighting adjustment tell you about who is over-represented in the raw survey sample?
+
+```{r}
+#| echo: false
+#| fig.cap: "Comparison of Unweighted vs. Weighted Proportions by Education Level"
+
+cces16 %>%
+  tabyl(educ) %>%
+  filter(educ != "") %>%
+  mutate(type = "Unweighted") %>%
+  bind_rows(
+cces16pre %>%
+  group_by(educ) %>%
+  summarise(percent = survey_prop()) %>%
+  filter(educ != "") %>%
+  mutate(type = "Weighted")
+) %>%
+  mutate(educ = fct_relevel(educ,c("No HS","High School Graduate","Some College","2-Year","4-Year","Post-Grad"))) %>%
+  ggplot(aes(x = educ, y = percent, fill = type)) +
+    geom_col(position = position_dodge(width = 0.8)) +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+    labs(x = "Education Level",
+         y = "Share of Population",
+         fill = "Measure") +
+  scale_fill_brewer(palette = "Set2") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+### Question 2
+
+What is the relationship between an intention to vote for Donald Trump in 2016 (`trump_intent`) and beliefs about the economy (`economy_retro`)? Fit a linear (or logistic) model including some covariates, and exclude people who didn't answer.
+
+:::{.callout-tip title="Hint: Weighted Regression"}
+You can use `svyglm()` from the `survey` package to fit a weighted regression:
+
+```r
+model <- svyglm(outcome ~ predictor1 + predictor2, design = your_survey_design)
+tidy(model, conf.int = TRUE)  # from the broom package
+```
+:::
+
+### Answer 2
+
+```{r}
+#| label: Q2
+#| fig.cap: "Relationship Between Trump Vote and Attitudes on Economy \n ('About the same' is excluded category)"
+
+# Create a numeric trump_intent indicator
+cces16pre <- cces16pre %>%
+  mutate(trump_intent = as.numeric(intent_pres_16 == "Donald Trump (Republican)"))
+
+# Fit a linear regression model
+cces16pre %>%
+  filter(economy_retro!="") %>%
+  mutate(economy_retro = relevel(economy_retro,"Stayed About The Same")) %>%
+  svyglm(trump_intent ~ economy_retro + pid3 +
+           gender + race + hispanic + age + I(age^2),
+             design=.,family = gaussian()) %>%
+  tidy() %>%
+  filter(str_detect(term,"economy")) %>%
+  arrange(desc(term)) %>%
+  mutate(term = str_replace(term,"economy_retro","")) %>%
+  mutate(lci = estimate - 1.96*std.error,
+         uci = estimate + 1.96*std.error) %>%
+  ggplot(aes(x = term, y = estimate)) +
+    geom_point() +
+    geom_errorbar(aes(ymin = lci, ymax = uci), width = 0) +
+    coord_flip() +
+    labs(x = "Economy Retro Category",
+         y = "Regression Estimate") +
+    theme_minimal()
+```
+
+# Computing Weights
+
+So far, we have used weights provided by the survey vendor (Pew). But what if you want to ensure the survey matches the population on dimensions the vendor did not target? Poststratification lets you reweight a survey yourself using known population data (e.g., from the Census or ACS).
+
+Next, we illustrate how to compute our own weights so that key characteristics (e.g., age, gender, education, race, income) in the survey sample match the same characteristics in the population.
+
+This could include two approaches: **raking** (when only marginal totals are known) and **poststratification** (when joint distributions are known). We are going to focus on poststratification.
+
+## Poststratification
+
+When we have the joint distribution of several variables (e.g., from census data such as the American Community Survey (ACS)), we can use poststratification directly. The idea is to identify the variables we want to poststratify the data on (e.g., the variables we want our survey to be re-weighted on so that it matches the population on these dimensions). We will reweight a survey from Pew Research in order to match the population in terms of sex, age and education.
+
+The initial survey does not match the population, with young people somewhat under represented and older, educated people being somewhat over represented.
+
+```{r}
+#| echo: false
+#| fig.cap: Comparison of Population Shares (by Sex, Age and Educ) for Pew Survey vs ACS
+
+# Combine the Pew and ACS datasets, creating a unique demo group identifier
+combined <- pew13 %>% 
+  count(sex, recage, receduc) %>% 
+  mutate(type = "Pew",
+         percent = n/sum(n)) %>% 
+  bind_rows(
+    acs17 %>% 
+      mutate(type = "ACS",
+             percent = Freq/sum(Freq))
+  ) %>% 
+  mutate(demo_group = paste(sex, recage, receduc))
+
+# Pivot the data so that each demo group has separate columns for Pew and ACS estimates,
+# then compute the absolute difference in percent
+top_groups <- combined %>% 
+  select(demo_group, type, percent) %>% 
+  pivot_wider(names_from = type, values_from = percent) %>% 
+  mutate(diff = abs(Pew - ACS)) %>% 
+  arrange(desc(diff)) %>% 
+  slice(1:8) %>% 
+  pull(demo_group)
+
+# Create the bar chart, labeling only the top 8 groups on the x-axis
+ggplot(combined, aes(x = demo_group, y = percent, fill = type)) +
+  geom_col(position = position_dodge(width = 0.8)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  scale_x_discrete(breaks = top_groups) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(x = "Demo Group",
+       y = "Share of Population",
+       fill = "Measure") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+Thus, in order to correct this, we can post-stratify the survey ourselves in order to match the population on these dimensions exactly. We do so as follows:
+
+```{r}
+#| label: poststrat
+
+#create survey design object
+pew_svy <- pew13 %>%
+  as_survey_design(weights = weight)
+
+#post stratify
+pew_pst_design <- postStratify(
+  pew_svy,
+  strata = ~sex + recage + receduc, #id variables to use when post-stratifying
+  population = acs17  # table reporting population frequencies to match
+) %>%
+  as_survey()
+```
+
+We will now examine data from a Pew Research survey that asked questions about presidential approval of Barack Obama as well as approval of Obamacare.
+
+### Question 3
+
+Using these survey weights, what share of people approved of Obama in this survey (`q1`)? What share approved of Obamacare (`q45`)? Compare the estimates with no weights, Pew's original weights, and post-stratification.
+
+### Answer 3
+
+```{r}
+#| echo: false
+#| label: Q3
+
+# Presidential approval (q1)
+df_q1 <- bind_rows(
+  # Unweighted proportions
+  pew13 %>%
+    group_by(q1) %>%
+    summarise(percent = n() / nrow(pew13)) %>%
+    mutate(weight = "Unweighted Pew"),
+  # Post-stratification weighted proportions
+  pew_pst_design %>%
+    group_by(q1) %>%
+    summarise(percent = survey_prop()) %>%
+    mutate(weight = "Our Post-Stratification"),
+  # Pew original weighted proportions
+  pew_svy %>%
+    group_by(q1) %>%
+    summarise(percent = survey_prop()) %>%
+    mutate(weight = "Pew Weights")
+) %>%
+  mutate(weight = fct_relevel(weight,"Unweighted Pew","Our Post-Stratification","Pew Weights"),
+         question = "Obama Approval") %>%
+  rename(q=q1)
+
+# Obamacare approval (q45)
+df_q45 <- bind_rows(
+  pew13 %>%
+    group_by(q45) %>%
+    summarise(percent = n() / nrow(pew13)) %>%
+    mutate(weight = "Unweighted Pew"),
+  pew_pst_design %>%
+    group_by(q45) %>%
+    summarise(percent = survey_prop()) %>%
+    mutate(weight = "Our Post-Stratification"),
+  pew_svy %>%
+    group_by(q45) %>%
+    summarise(percent = survey_prop()) %>%
+    mutate(weight = "Pew Weights")
+) %>%
+  mutate(weight = fct_relevel(weight,"Unweighted Pew","Our Post-Stratification","Pew Weights"),
+         question = "Obamacare Approval") %>%
+  rename(q=q45)
+
+# Plot
+ggplot(bind_rows(df_q1,df_q45), aes(x = factor(q), y = percent, fill = weight)) +
+  geom_col(position = position_dodge(width = 0.9)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(x = "",
+       y = "Share of Population",
+       fill = "Weighting") +
+    scale_fill_brewer(palette = "Set2") +
+  facet_grid(~question) +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+  axis.text.x = element_text(angle = 45, hjust = 1),
+  panel.border = element_rect(color = "gray", fill = NA),
+  panel.spacing = unit(1, "lines"),
+    strip.background = element_rect(fill = "lightgray", color = "black"),
+    strip.text = element_text(face = "bold", size = 12)
+  )
+
+```
+
+How do the three weighting approaches compare? Why might Pew's own weights and your poststratification weights produce different results?
+
+# The European Social Survey
+
+Now it is your turn to put these survey tools to work. Let's consider the European Social Survey. This is a cross-country survey conducted in 2023-2024 asking a wide range of questions of respondents in European countries. The survey includes weights (variable `anweight`) in order to account for non-response, population differences, etc. so that analysis of the survey should be reflective of the full population of Europe as well as populations of individual countries.
+
+In our folder, I have included the codebook that explains the full set of variables, based on survey questions, available.
+
+To start, we will create a survey design object.
+
+```{r}
+#| label: euro-setup
+
+#create design object
+ess = euro %>% 
+  as_survey_design(ids = psu, strata = stratum, weights = anweight, nest=TRUE)
+
+#also create helper dataset keeping track of variable descriptions
+euro_vars <- enframe(labelled::var_label(euro), name = "variable", value = "label") %>% 
+  mutate(label = unlist(label))
+```
+
+The survey asks a wide range of questions. Suppose we want to understand the alcohol consumption by European country, which is asked in the survey. The variable `alcfreq` reports frequency of drinking alcohol. We could do the following:
+
+```{r}
+#| label: alcohol
+#| fig.cap: "Percent of Population Having a Drink per Day or More"
+
+ess %>% 
+  group_by(country_full,alcfreq) %>%
+  summarize(survey_prop()) %>%
+  ungroup() %>%
+  filter(alcfreq ==1) %>%
+    ggplot(aes(x=reorder(country_full,coef),y=coef)) +
+    geom_col() +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+    ylab("Pct of Population") +
+    xlab("") +
+    coord_flip() +
+    theme_minimal()
+```
+
+Or, suppose we wanted to study the relationship between country GDP per capita and reported happiness:
+
+```{r}
+#| label: happiness
+#| fig.cap: "GDP and Happiness"
+
+ess %>% 
+  group_by(country_full) %>%
+  summarize(survey_mean(happy,na.rm=T)) %>%
+  ungroup() %>%
+  left_join(
+    gapminder::gapminder %>% filter(year==max(year)) %>% select(country_full=country,gdpPercap) #GDP per capita data (a bit out o)
+  ) %>%
+    ggplot(aes(x=gdpPercap,y=coef,label=country_full)) +
+    geom_point() +
+    geom_text(vjust = -0.5, hjust = 0.6,size=3) +
+    scale_x_continuous(labels = scales::dollar_format(scale = 1e-3, suffix = "k")) +
+    ylab("Happiness Score, Ave") +
+    xlab("GDP per Capita") +
+    theme_minimal()
+```
+
+### Question 4
+
+Pick a variable you are interested in examining in the European Social Survey and graphically summarize it by country. Examine the relationship between this variable and another variable of interest by drawing on and modifying the code above.
+
+### Answer 4
+
+```{r}
+#| label: Q4
+
+```
+
+### Question 5 (Challenge)
+
+For another key variable of interest, can you summarize the variable visually using a map of Europe?
+
+```{r}
+#| label: Q5
+library(eurostat)
+library(giscoR)
+
+#code to create map
+eu_countries <- get_eurostat_geospatial(
+  nuts_level = 0, resolution = "60", output_class = "sf"
+)
+
+# Create a basic map using ggplot2
+ggplot(eu_countries) +
+    geom_sf(fill = "lightblue", color = "black") +
+    theme_minimal() +
+    labs(title = "Map of European Countries")
+
+```

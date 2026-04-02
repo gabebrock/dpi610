@@ -1,0 +1,154 @@
+---
+title: "Immigration Experiment"
+subtitle: DPI 610
+format:
+  html:
+    default: true
+  pdf:
+    default: true
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(broom)
+library(pwr)
+```
+
+# Introduction
+
+We are going to learn a few more key concepts about evaluating randomized experiments. We are going to use data from one of the experiments from the class -- specifically, an experiment where canvassers went door to door having conversations with people about immigration trying to persuade them to have more tolerant attitudes.
+
+## Pre-Lab Exercise (Complete Before Class)
+
+Before coming to the lab session, complete the following:
+
+**Step 1: Load the Data**
+
+Open RStudio/Posit Cloud and load the experiment data. This dataset contains 7,870 participants with recorded demographic characteristics and indicators for having voted in previous elections. We also record treatment status, both numerically and as a string, and our outcomes of interest.
+
+```{r}
+#| label: load-data
+
+# Load Data
+df <- read_csv("immigration_data.csv")
+```
+
+# Explore Data
+
+Whenever loading new data, it is a good idea to explore it and see the number of rows, what the key variables are, etc..
+
+```{r}
+glimpse(df)
+```
+The key outcome variables include `t1_factor_prej`, `t1_factor_policy`, and `t1_factor_overall`. These are scales measuring immigration attitudes based on survey responses collected a week after the experimental intervention. The variable `treat` records whether someone received the full treatment, i.e. in which canvassers asked the person's view on immigration, addressed common misconceptions, made supportive arguments, and engaged in non-Judgmental exchange of narratives on (1) canvassers' and individuals' previous experience with immigrants, and (2) a time when someone showed compassion when they really needed it. The abbreviated/short script involved a shorter conversation without the exchange of narratives. And, lastly, the placebo involved a conversation not about immigration at all.
+
+**Step 2: Reflecting on Missingness**
+
+You may have noticed some `NA` values for the three outcome variables in the output of your `glimpse(df)` call. Why might we care about this? What are some ways we might deal with missing values?
+
+*Your answer:*
+
+
+**Step 3: Formally investigate missingness**
+
+What proportion of our observations have missing values for our outcomes? Is missingness balanced across our treatment groups? Based on your results, are you concerned about the effects of missing values in our study?
+
+*Hint: You can use `across()` paired with `starts_with()` to `summarize()` across many variables at once.*
+
+```{r}
+#| label: prelab-code
+
+# Insert Answer Here
+
+```
+
+*Your answer:*
+
+---
+
+\newpage
+
+## Question 0: Power Calculation
+
+Suppose we think that the minimum size effect we want to be able to detect is 0.075 of a standard deviation. Using the function `pwr.t.test()` calculate the estimate of the sample size you would need for this study to detect a difference between Deep Canvassing treatment and the placebo! Considering your answers to the prelab exercise, is our sample large enough to detect this effect?
+
+## Answer 0
+
+```{r}
+#Insert Answer here
+
+```
+
+## Question 1: Checking Balance between Treatment/Control Group
+
+Before analyzing the data, we want to make sure that the randomization worked as we might hope.
+Check that observable pre-treatment covariates (`vf_age`, `vf_female`, `vf_latino`, and `vf_voted16`) are balanced in terms of their mean. Briefly interpret the result.
+
+## Answer 1
+
+```{r}
+#| label: q1
+
+#Insert Answer
+```
+
+## Question 2: Estimating Treatment Effects
+
+We will focus on comparing the "full treatment" condition to the placebo condition.
+First, define a variable `treat1` that takes a value 1 if the person gets the full treatment (i.e., `treat` variable takes `2`) and 0 if the person gets the placebo (i.e., `treat` variable takes `0`).
+
+Then, estimate the average treatment effect (ATE) by the difference-in-means estimator.
+Use `t1_factor_overall` as the outcome variable.
+
+## Answer 2
+
+```{r}
+#| label: q2
+
+#Insert Answer
+```
+
+
+## Question 3: Estimating Heterogeneous Treatment Effects
+
+We investigate if the treatment effect varies across sub-groups.
+
+First, investigate if the effect of the treatment varies across states. Use `state` variable to subset the dataset, and estimate ATE for California (`"CA"`) and Tennessee (`"TN"`).
+
+Second, pick a variable for which you think the treatment effects will vary by group (i.e., treatment effect heterogeneity). Estimate the subgroup treatment effect based on the variable of your choice. Briefly interpret the result.
+
+## Answer 3
+
+```{r}
+#| label: heterogeneous-effects
+
+#Insert Answer
+```
+
+## Question 4: Unique Effect of Deep Canvassing
+
+In Question 2 you examined the effect of Deep Canvassing versus the Placebo. How does the effect of Deep Canvassing compare to instances where the canvasser used the Short Script instead?
+
+## Answer 4
+
+```{r}
+#| label: short-script
+
+#Insert Answer
+
+```
+
+## Question 5 (Extra Challenge)
+
+Create a visualization of the effect estimates from Question 4 using `ggplot()`. Use the AI course assistant for some advice!
+
+## Answer 5
+
+```{r}
+#| label: visualization
+# Insert Answer Here
+
+```

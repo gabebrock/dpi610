@@ -1,0 +1,214 @@
+---
+title: "Measuring Ideology"
+subtitle: "DPI 610"
+format:
+  pdf: default
+execute:
+  echo: true
+  include: true
+  message: false
+  warning: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+# Load libraries
+library(tidyverse) # For data manipulation and visualization
+library(mirt)
+#devtools::install_github("masurp/ggmirt")
+library(ggmirt)
+library(ggrepel)
+#devtools::install_github("UrbanInstitute/urbnthemes", build_vignettes = TRUE)
+library(urbnthemes)
+
+load("week9.RData")
+```
+
+## Pre-Lab Exercise (Complete Before Class)
+
+Before coming to the lab session, complete the following:
+
+**Step 1: Explore the Data**
+
+Use `glimpse()` to examine the congressional ideology dataset `mc`. How many rows and columns does it have? What does each row represent?
+
+```{r}
+#| label: prelab
+
+glimpse(mc)
+summary(mc)
+```
+
+- The congressional ideology dataset, `mc`, has `r nrow(mc)` rows and `r nocl(mc)` columns (variables).
+
+**Step 2: Reflection (2 sentences max)**
+
+The variable `nominate_dim1` reduces each member's ideology to a single number on a liberal-conservative scale. What are some potential limitations of summarizing ideology with one dimension?
+
+- Reducing member ideology to a single dimension, `nominate_dim1`, misrepresents ideology scores because they ideological consistency across policy areas, not summaries of policy preferences and disregards any other cofounders of political behavior. 
+
+---
+
+\newpage
+
+## Part 1: Congressional Ideology
+
+In this exercise, we will start by working with the dataset `mc`, which contains estimates of the ideological positions of members of congress. The variable `nominate_dim1` reports an ideological score for the first dimension of member ideology that is comparable across time. A more negative value generally denotes more liberal ideology and a more positive value denotes more conservative ideology. A `party_code` of 100 indicates Democratic party and a `party_code` of 200 indicates Republican party.
+
+| Variable | Description |
+|----------|-------------|
+| `congress` | Congress number (e.g., 118 = 2023-2025) |
+| `chamber` | `"House"` or `"Senate"` |
+| `bioname` | Member's name |
+| `state_abbrev` | Two-letter state abbreviation |
+| `party_code` | 100 = Democrat, 200 = Republican |
+| `nominate_dim1` | First-dimension ideology score (negative = liberal, positive = conservative) |
+| `year` | Year of the Congress |
+
+### Question 1
+
+Polarization is generally defined as the average ideological position of Republicans minus the average ideological position of Democrats on the first dimension of the ideological scale. Create a plot that illustrates the average ideological position of these two parties over time since 1900. When do you start seeing divergence in terms of the ideological positions of the parties?
+
+*Hint: Filter to `year >= 1900`, then `group_by(year, party_code)` and `summarize()` the mean of `nominate_dim1`. Filter to party codes 100 and 200, then use `geom_line()` with `color` mapped to party.*
+
+### Answer 1
+```{r}
+#| label: Q1
+
+mc <- mc %>%
+  mutate(party = ifelse(party_code == 100, "D", "R"))
+
+q1 <- mc %>%
+  filter(year >= 1900 & party %in% c("D", "R")) %>%
+  group_by(year, party) %>%
+  summarize(dim1 = mean(nominate_dim1, na.rm=TRUE))
+
+q1 %>%
+  ggplot(aes(x = year, y = dim1, color=party)) +
+  geom_line() +
+  scale_x_continuous(breaks = seq(min(mc$year), max(mc$year), by = 20)) +
+  scale_color_manual(values = palette_urbn_politics)
+
+```
+
+### Question 2
+
+In the 118th Senate, who was the most extreme Republican and the most extreme Democrat based on this measure? Create a histogram that illustrates their positions as compared to the distribution of member ideologies in that Congress.
+
+*Hint: Filter to `congress == 118` and `chamber == "Senate"`. Use `geom_histogram()` for the distribution, `geom_vline()` for the extreme members, and `geom_text()` to label them.*
+
+### Answer 2
+
+```{r}
+#| label: Q2
+
+q2 <- mc %>%
+  filter(congress == 118 & 
+         chamber == "Senate") %>%
+  group_by(party, bioname) %>%
+  summarize(dim1 = mean(nominate_dim1, na.rm=TRUE)) %>% 
+  arrange(party, dim1) %>%
+  ungroup(party) 
+
+
+q2 %>% slice_max(dim1)
+q2 %>% slice_min(dim1)
+
+q2 %>%
+  ggplot(aes(x = dim1)) +
+  geom_histogram() +
+
+```
+
+:::{.callout-tip}
+## Core vs. Stretch
+Questions 1--3 are the **core** of today's lab. Questions 4 and 5 are **challenge** questions --- attempt them if you finish the core.
+:::
+
+## Part 2: SCOTUS
+
+In Part 1 we used pre-computed ideology scores (DW-NOMINATE). Now we estimate ideology from scratch using justices' votes on the Supreme Court.
+
+The key idea is from **item response theory (IRT)**: if two justices frequently vote the same way, they are ideologically similar. The model finds a single dimension that best explains the observed voting patterns --- much like DW-NOMINATE does for Congress, but estimated directly from case votes.
+
+We will start with the data file `sc2023`. This is formatted so that we are ready to run the IRT model to estimate ideology based on the judges' votes in the 2023 term. Note that we can use a similar method for survey responses too if we were trying to estimate ideology for the public!
+
+```{r}
+#| label: Q3-setup
+
+# Step 1: Reshape to wide format — one row per justice, one column per case,
+# values are the vote direction (1 = liberal, 2 = conservative).
+# This is the input format the IRT model expects.
+sc2023votes <- sc2023 %>%
+  mutate(case = factor(caseName),
+         case_n = as.numeric(case)) %>%
+  pivot_wider(id_cols = c(term, justice, justiceName),
+              names_from = case_n,
+              values_from = direction)
+
+# Step 2: Fit a one-dimensional IRT model (2PL) to the vote matrix.
+# The model finds a single ideological dimension that best explains
+# the observed voting patterns: justices who vote alike end up close
+# together on the scale (the same logic as DW-NOMINATE for Congress).
+mod <- mirt(
+  data = sc2023votes %>% select(-c(term, justice, justiceName)),
+  model = 1,        # one latent dimension (liberal <-> conservative)
+  itemtype = "2PL", # each case allowed its own difficulty and discrimination
+  technical = list(NCYCLES = 5000),
+  verbose = FALSE
+)
+
+# Step 3: Extract each justice's estimated position on that dimension.
+sc2023votes <- sc2023votes %>%
+  mutate(ideo = as.numeric(fscores(mod))) %>%
+  relocate(ideo, .after = justiceName)
+```
+
+The dataset `sc2023votes` contains one row per justice with the following key columns:
+
+```{r}
+#| label: glimpse-sc2023
+glimpse(sc2023votes)
+```
+
+### Question 3
+
+Based on the estimates you have just made for each justice's ideology, who is the most conservative and most liberal member of the court? Plot all members ideological positions and identify each member.
+
+### Answer 3
+
+```{r}
+#| label: Q3
+#Insert answer here
+
+```
+
+### Question 4
+In order to tell which cases distinguished between liberals and conservatives in various ways, you can use an Item Person Map. It will rank cases in terms of how liberal or conservative judges needed to be in order to vote one way or the other. Use the function `itempersonMap()` on the results of the model (`mod`) and determine which case or cases distinguished the most extreme justices.
+
+### Answer 4
+
+```{r}
+#| label: Q4
+#| fig-height: 8
+
+#Insert answer here
+
+```
+
+
+### Question 5 (Challenge Question)
+The object `sc_ideo` contains ideological positions for each justice since 2001. These were estimated separately, year by year, and so they are not directly comparable over time. Compare the ideological evolution of Justice Thomas to that of Justice Roberts over time by standardizing their ideological scores within each year and then plotting their ideological trajectories over time.
+
+*Hint: Group by `term`, then z-score the ideology within each year using `(x - mean(x)) / sd(x)`. Filter to the two justices and use `geom_line()`.*
+
+### Answer 5 (Challenge Question)
+
+```{r}
+#| label: Q5
+#Insert answer here
+
+
+```

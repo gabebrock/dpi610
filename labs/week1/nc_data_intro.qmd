@@ -1,0 +1,419 @@
+---
+title: "NC Voter File Intro"
+subtitle: "DPI 610"
+author: "Gabriel Brock"
+date: "January 29, 2026"
+format: 
+  pdf: default
+  html: default
+execute:
+  echo: true
+  warning: false
+---
+
+```{r}
+#| label: setup
+#| message: false
+
+# Load required packages
+library(tidyverse)
+```
+
+This exercise is designed to give you more experience with some of the basic functionality of **R** while also familiarizing yourself with a data set that we will be using in our upcoming problem set.
+
+# Pre-Lab Exercise (Complete Before Class)
+
+**Before coming to the lab session, complete the following exercise.**
+
+## Step 1: Review the Data Dictionary
+
+Open the file `nc_dictionary.csv` and familiarize yourself with the variables available in the NC voter file data.
+
+```{r}
+
+nc_dict <- read_csv("nc_dictionary.csv")
+
+```
+
+
+## Step 2: Choose a Variable
+
+Pick one variable from the data dictionary that you think might be useful for predicting voter turnout.
+
+## Step 3: Write a Brief Reflection (2 sentences max for each)
+
+For the variable you chose, consider:
+
+- **Predictive Value**: Why do you think this variable might (or might not) be correlated with voter turnout?
+- **Measurement Quality**: How confident are you that this variable is accurately measured? What are potential limitations?
+
+## Answer to Pre-Lab Exercise
+
+*Variable chosen:* 	college_grad_prob
+	
+*Predictive Value:* According to [Pew Research Center (2025)](https://www.pewresearch.org/politics/2025/06/26/voter-turnout-2020-2024/), Almost half of nonvoters (48%) had only a high school education or less, compared with 28% among voters. College graduates made up about twice the share of voters (41%) as nonvoters (22%).
+
+*Measurement Quality:*
+While I know it's possible to certify whether someone graduated college, I'm not sure how this would work at scale. While it would be easy to get info from self-reports (i.e., Facebook status or LinkedIn) there's the chance someone lies and that's only if we can find information about someone.
+
+---
+
+# Load data 
+
+First, we use `read_csv()` from the readr package (part of tidyverse) to load external data. For this project, let's load in some (synthetic) NC voter file data from a vendor (file is named `nc.csv`), along with a dictionary file that describes the variables (`nc_dictionary.csv`). 
+
+In **R**, we create a new object in the environment by using the `<-` symbol followed by a value, vector or data.
+```{r}
+#| label: load-data
+
+# load data using read_csv() function from readr
+nc_data <- read_csv("nc.csv")
+```
+
+## Question 1 
+
+Following the above code, load the dataset `nc_dictionary.csv` onto the environment, and assign the data to a new object named `dictionary`.
+
+## Answer 1 
+
+```{r}
+#| label: load-dictionary
+
+dictionary <- read_csv("nc_dictionary.csv")
+```
+
+# Access Variables in Data Frames 
+
+Typically, a dataset consists of multiple variables, and each column corresponds to a variable. With tidyverse, we can examine our data using `glimpse()`:
+
+```{r}
+#| label: examine-data
+
+#look at the data! glimpse() is the function; nc_data is the object
+glimpse(nc_data)
+```
+
+We can access individual variables using the select() function. For example, to access the party variable:
+
+```{r}
+#| label: access-var
+# use slice_head() to show just first five elements
+# use the %>% "pipe" to perform multiple commands on an object
+nc_data %>%
+  select(party) %>%
+  slice_head(n = 5)
+```
+
+## Question 2 
+
+Examine the structure of dataset `dictionary` using `View()` to see descriptions of the variables included in the dataset.
+
+## Answer 2 
+
+```{r}
+#| label: examine-dictionary
+
+view(dictionary)
+```
+
+## Question 3 
+
+Access the variable named `age` in dataset `nc_data` and show the first five elements.
+
+## Answer 3 
+
+```{r}
+#| label: access-age
+
+nc_data %>%
+  select(age) %>%
+  slice_head(n = 5)
+```
+
+# More on Functions 
+
+Many commands in R take the form of functions. Functions save time since we can write one function and then call it multiple times, rather than writing the same code over and over.
+
+Functions allow us to:
+
+- Create objects
+- Perform complex calculations
+- Estimate statistical models
+- Create graphs & maps
+- Generate output (e.g. tables)
+
+Some useful starter functions from base R:
+
+- `c()`
+- `length()` & `dim()`
+- `seq()` & `rep()`
+- `sum()`, `mean()`
+- `min()`, `max()`
+- `nchar()`, `length()`
+- `nrow()`, `ncol()`
+
+```{r}
+#| label: baseR-functions
+
+# Add numbers 
+sum(1, 2, 4, 5)
+
+# Create a sequence of numbers from 1 to 10 
+seq(1, 10)
+
+# Create a sequence of numbers from 0 to 10 by 2
+seq(0, 10, 2)
+
+# Create a vector of characters
+c("A", "B", "C") # Create a list or vector
+```
+
+Some useful tidyverse functions:
+
+- `tibble()`: Create tibble to store data
+- `select()`: Choose columns
+- `filter()`: Choose rows
+- `mutate()`: Create or modify columns
+- `group_by()`: Group data
+- `summarize()`: Summarize data
+- `arrange()`: Sort data
+- `pull()`: Pull the values of a variable in a tibble out as a vector
+
+```{r}
+#| label: tidy-functions
+#| 
+# Create a tibble (tidyverse's enhanced data frame)
+example_tibble <- tibble(
+  letters = c("A", "B", "C"),
+  numbers = c(2,1,3)
+)
+
+#Calculate the mean of the numbers variable
+example_tibble %>%
+  summarize(mean_numbers = mean(numbers))
+  
+#See the number of rows
+example_tibble %>%
+  nrow()
+```
+
+## Question 4 
+
+The data `nc_data` includes a variable `age`. What is the oldest person in the data set?
+
+## Answer 4 
+
+```{r}
+#| label: max-age
+
+max(nc_data$age)
+```
+
+# Working with Data Frames 
+
+R and tidyverse provide powerful tools for working with data frames. Let's look at some common operations:
+
+To filter rows based on a condition:
+
+```{r}
+#| label: filter-old
+old_people <- nc_data %>%
+  filter(age > 80)
+```
+
+To select specific columns:
+
+```{r}
+#| label: select-columns
+id_ages <- nc_data %>%
+  select(id, age)
+
+id_ages %>%
+  slice_head(n = 5)
+```
+
+## Question 5 
+
+How many people are over the age of 90 in the data set?
+
+## Answer 5 
+
+```{r}
+#| label: over-90
+
+nc_data %>%
+  filter(age > 90) %>%
+  count()
+```
+
+We can also sort data using the function `arrange()`:
+
+## Question 6 
+
+Can you sort the ages of the first 10 people in the data set in order of increasing magnitude? How would you reorder the entire dataset by age?
+
+## Answer 6 
+
+```{r}
+#| label: order-by-age
+
+
+nc_data %>%
+  head(n = 10) %>%
+  arrange(age)
+```
+
+# Modifying Data Frames and Variables 
+
+With tidyverse, we use `mutate()` to create or modify variables. For example, we can create a new variable that standardizes age in standard deviations from its mean:
+
+There are three key steps to creating a new function:
+
+  1. You need to pick a name for the function.
+  2. You list the inputs, or arguments, to the function inside function; function(x, y, z).
+  3. You place the code you have developed in body of the function, a { block that immediately follows function(...).
+
+
+```{r}
+#| label: standardize-age
+
+# we are overwriting the old data with the new version, with the additional variable!
+# use the mutate() function to create new variables!
+nc_data <- nc_data %>%
+  mutate(age_std = (age - mean(age))/sd(age))
+```
+
+We can also write our own functions that can be applied to objects or to variables themselves. 
+
+## Question 7
+
+Can you write a function that standardizes any numeric variable as we did with age? After writing it, use it to define a new variable `age_std2` in `nc_data`.
+
+## Answer 7
+
+```{r}
+#| label: standardize-any
+
+  
+std_any <- function(x) {
+  (x - mean(x))/sd(x)
+}
+
+nc_data %>%
+  mutate(age_std2 = std_any(age)) %>%
+  select(age_std, age_std2)
+
+```
+
+## Question 8
+
+Create a new variable that counts the number of times people voted between 2008 and 2014 using the variables `voted2008`, `voted2010`, `voted2012`, and `voted2014`.
+
+## Answer 8 
+
+```{r}
+#| label: vote-history
+
+
+elections <- c("voted2008", "voted2010", "voted2012", "voted2014")
+
+nc_data %>%
+  mutate(voted = rowSums(across(elections))) %>%
+  select(all_of(elections), voted)
+
+```
+
+# Summarizing Data by Groups 
+
+**R** makes it easy to group and summarize data using `group_by()` and `summarize()`. For example, to see what average turnout was for 2008 by gender:
+
+```{r}
+#| label: summarize-gender
+#| include: false
+
+nc_data %>%
+  group_by(gender) %>%
+  summarize(avg_turnout_2008 = mean(voted2008))
+```
+
+## Question 9 
+
+Now determine average turnout in 2008 by gender *and* party. Which gender/party combination has the highest turnout rate?
+
+## Answer 9 
+
+```{r}
+#| label: summarize-gender-party
+
+nc_data %>%
+  group_by(gender, party) %>%
+  summarize(avg_turnout_2008 = mean(voted2008)) %>%
+  arrange(desc(avg_turnout_2008))
+
+```
+
+- Female Republicans had the highest turnout in the 2008 election at 81.6%
+
+## Question 10 
+
+Super Challenge Question: Write a function that takes as an input a factor that is a voter characteristic (e.g., party, gender, race, etc.) and a turnout rate and then, for that characteristic, identifies the sub-group with the highest level of turnout.
+
+Use this function to return the socioeconomic group `socioecon_bg` with the highest level of turnout in 2014
+
+Two hints:
+(1) Make sure the function takes your data object / tibble as an input
+(2) To refer to a variable within a function, use double curly brackets `{{ }}`.
+
+## Answer 10
+
+```{r}
+#| label: max-turnout
+
+
+highest_turnout <- function(df, voter_char, election) {
+  df %>%
+    group_by({{ voter_char }}) %>%
+    summarize(avg_turnout_election = mean({{ election }})) %>%
+    slice_max(avg_turnout_election, n = 1)
+}
+
+highest_turnout(nc_data, socioecon_bg, voted2014)
+
+```
+
+## Question 11
+
+Super Challenge Question: Edit the code below, which makes a graph showing the relationship between `familyincome` and `gun_owner_prob`, so that it takes as an argument any of the several numeric variables in the data and creates a scatter plot with `familyincome` on the x-axis and the variable you input on the y-axis.
+
+```{r}
+#| label: familyincomefn
+#| include: false
+
+# call ggplot for graphics; aes(x=...,y=...) specifies variables
+# geom_point() plots the data
+# geom_smooth() plots line of best fit (e.g., regression)
+# theme_minimal() chooses a minimal theme
+nc_data %>%
+  ggplot(aes(x=familyincome,y=gun_owner_prob)) +
+  geom_point() +
+  geom_smooth(method = "lm",se=F) +
+  theme_minimal()
+
+```
+
+## Answer 11
+
+```{r}
+#| label: plotfn
+
+income_any <- function(y) {
+  nc_data %>%
+    ggplot(aes(x=familyincome, y={{ y }})) +
+    geom_point() +
+    geom_smooth(method = "lm",se=F) +
+    theme_minimal()
+}
+
+income_any(gun_owner_prob)
+income_any(college_grad_prob)
+```

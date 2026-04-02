@@ -1,0 +1,308 @@
+---
+title: "Spatial Data (Science)"
+subtitle: DPI 610
+format:
+  html:
+    default: true
+  pdf:
+    default: true
+    geometry:
+      - margin=1in
+    execute:
+      warning: false
+      message: false
+---
+
+```{r}
+#| label: setup
+#| echo: false
+
+library(sf)
+library(tidyverse)
+library(geomander)
+library(spdep)
+library(janitor)
+
+```
+
+# Introduction
+
+Today we are going to practice working with spatial data, specifically:
+
+- Calculating Moran's I
+- Working with Intersections and Unions of Spatial Data
+
+# Pre-Lab Exercise (Complete Before Class)
+
+Before coming to the lab session, complete the following:
+
+## Calculating Moran's I
+Use the following code and pick a state you are interested in to explore creating a map exhibiting 2020 Presidential Vote Share by precinct. Then calculate Moran's I on a precinct basis. Here's an example for Utah.
+
+```{r moran-i}
+#| warning: false
+#| message: false
+#| echo: false
+#| eval: true
+#| fig-width: 6
+#| fig-height: 4
+
+# Load voting data for Utah
+ut <- get_vest("UT", 2020) %>%
+  # Calculate dem vote share
+  mutate(dvoteshare = pre_20_dem_bid / (pre_20_dem_bid + pre_20_rep_tru),
+         # Calculate centroid of each precinct
+         cent = st_centroid(geometry))
+
+# Create a neighborhood object for Moran's I
+ut_nb <- poly2nb(ut, queen = TRUE)
+
+# Calculate weights for Moran's I
+ut_weights <- nb2listw(ut_nb, style = "W", zero.policy=T)
+
+# Perform Moran's I test
+moran <- moran.test(ut %>% pull(dvoteshare), 
+                    ut_weights,
+                    na.action = na.omit)
+
+# Create a spatial polygon object for each county
+ut_counties <- ut %>%
+  # Group by county and calculate union of precinct geometries
+  group_by(COUNTY) %>%
+  summarize(geometry = st_union(geometry)) %>%
+  # Calculate centroid of each county
+  mutate(coords_x = map_dbl(st_point_on_surface(geometry), 1),
+         coords_y = map_dbl(st_point_on_surface(geometry), 2))
+
+# Create a map of Utah vote share by precinct and county labels
+ggplot(ut) +
+  # Fill polygons by vote share
+  geom_sf(aes(fill = dvoteshare), color = NA) +
+  # Outline counties in black
+  geom_sf(data = ut_counties, fill = NA, color = "black", lwd = 0.3) +
+  # Add county labels
+  geom_text(data = ut_counties, aes(x = coords_x, y = coords_y, label = COUNTY),
+            size = 2, color = "black") +
+  # Color scale for vote share
+  scale_fill_gradient2(
+    low = "red",
+    mid = "white",
+    high = "blue",
+    midpoint = 0.5,
+    limits = c(0, 1),
+    labels = scales::percent,
+    name = "Democratic\nVote Share"
+  ) +
+  theme_void() +
+  labs(title = "2020 Presidential Election Results - Utah",
+       subtitle = paste("Moran's I:", round(first(moran$estimate),3)))
+```
+
+Now, pick a state you are interested in and reproduce this map with county boundaries and labels. The data from `get_vest()` includes a `COUNTY` column. You can dissolve precincts into counties using `group_by()` and `summarize()`, then use `sf::st_point_on_surface()` to position labels at the center of each county.
+
+## Answer
+
+```{r texas-moran-i}
+#| label: answer-pre-lab
+
+# Pick a state — change "UT" to any two-letter state abbreviation
+tx <- get_vest("TX", 2020) %>%
+  mutate(dvoteshare = pre_20_dem_bid / (pre_20_dem_bid + pre_20_rep_tru),
+         cent = st_centroid(geometry))
+
+# Calculate Moran's I
+tx_nb <- poly2nb(tx, queen = TRUE)
+tx_weights <- nb2listw(tx_nb, style = "W", zero.policy = T)
+
+moran <- moran.test(tx %>% pull(dvoteshare),
+                    tx_weights,
+                    na.action = na.omit)
+
+# Create county boundaries by dissolving precincts
+tx_counties <- tx %>%
+  group_by(CNTY) %>%
+  summarize(geometry = st_union(geometry)) %>%
+  mutate(coords_x = map_dbl(st_point_on_surface(geometry), 1),
+         coords_y = map_dbl(st_point_on_surface(geometry), 2))
+
+# Build the map with precincts, county boundaries, and county labels
+ggplot(tx) +
+  geom_sf(aes(fill = dvoteshare), color = NA) +
+  geom_sf(data = tx_counties, fill = NA, color = "black", lwd = 0.3) +
+  geom_text(data = tx_counties, aes(x = coords_x, y = coords_y, label = CNTY),
+            size = 2, color = "black") +
+  scale_fill_gradient2(
+    low = "red",
+    mid = "white",
+    high = "blue",
+    midpoint = 0.5,
+    limits = c(0, 1),
+    labels = scales::percent,
+    name = "Democratic\nVote Share"
+  ) +
+  theme_void() +
+  labs(title = "2020 Presidential Election Results",
+       subtitle = paste("Moran's I:", round(first(moran$estimate), 3)))
+
+```
+
+# Determining Intersecting District Geographies
+
+:::{.callout-note}
+## Pacing Guide
+**Core (Questions 1-2):** Everyone should complete these during the lab session.
+**Stretch (Question 3):** Attempt if time permits --- this is more challenging and open-ended.
+:::
+
+## Question One
+
+In the most recent redistricting cycle, the state of Georgia drew new congressional district maps and congressional elections in 2022 were held using these maps. However,  a judge ruled that these maps constituted violations of Section 2 of the Voting Rights Act and ordered the districts to be redrawn. In a special session, the state legislature redrew new districts that were used in the most recent 2024 congressional elections.
+
+Create maps illustrating the vote shares for each of the two congressional maps of Georgia -- the previously proposed congressional districts and the newly implemented ones (`ush` and `ush_remedial`). Include a note for each plot saying the share of majority Democratic districts and the share of majority-Black districts (based on voting age population `f18_pop` and voting age Black population `f18_ap_blk`). A district is "majority-Black" if `f18_ap_blk / f18_pop >= 0.5`.
+
+## Answer One
+
+```{r}
+#| label: answer-one
+
+# Step 1: Load the data
+ush <- readRDS("data/ush.rds") # Georgia US House (USH) districts spatial data
+ush_remedial <- readRDS("data/ush_remedial.rds") # remedial USH
+
+# Step 2: For ush, compute the share of majority-Dem districts (dvoteshare > 0.5)
+#         and the share of majority-Black districts (f18_ap_blk / f18_pop >= 0.5)
+
+# class example
+ush %>%
+  st_drop_geometry() %>%
+  summarize(sum(dvoteshare > 0.5) / n()) %>%
+  pull()
+
+# my version
+ush <- ush %>% # save these vars. for later
+  mutate(maj_dem = if_else(dvoteshare > 0.5, 1, 0),
+         maj_blk = if_else(f18_ap_blk / f18_pop >= 0.5, 1, 0)) 
+
+ush %>%
+  st_drop_geometry() %>%
+  summarize(pct_maj_dem = mean(maj_dem),
+            pct_maj_blk = mean(maj_blk))
+
+# Step 3: Build a ggplot map of ush using geom_sf(aes(fill = dvoteshare))
+#         with scale_fill_gradient2 (red/white/blue). Add subtitle with stats.
+ga_districts <- ush %>%
+  group_by(district) %>%
+  summarize(geometry = st_union(geometry)) %>%
+  mutate(coords_x = map_dbl(st_point_on_surface(geometry), 1),
+         coords_y = map_dbl(st_point_on_surface(geometry), 2))
+
+ggplot(ush) +
+  geom_sf(aes(fill = dvoteshare), color = NA) +
+  geom_text(data = ga_districts, 
+            aes(x = coords_x, y = coords_y, label = district),
+            size = 2, color = "black") +
+  scale_fill_gradient2(
+    low = "red",
+    mid = "white",
+    high = "blue",
+    midpoint = 0.5,
+    limits = c(0, 1),
+    labels = scales::percent,
+    name = "Democratic\nVote Share"
+  ) +
+  theme_void() +
+  labs(title = "2020 Georgia US House Districts")
+
+
+# Step 4: Repeat Steps 2-3 for ush_remedial
+
+# Step 5: Combine the two maps side-by-side using library(patchwork): map1 + map2
+
+```
+
+## Question Two
+
+Did the share of majority-minority districts change from the old to the new maps? If so, by how much? Use `f18_pop` and `nh18_wht` to determine the answer. A district is "majority-minority" if `nh18_wht / f18_pop < 0.5`.
+
+## Answer Two
+
+```{r}
+#| label: answer-two
+
+# Compute the share of majority-minority districts for ush
+# (where non-Hispanic white voting-age population is less than 50%)
+
+# Repeat for ush_remedial
+
+# Compare the two shares
+
+```
+
+## Question Three
+
+Sometimes we want to know how much of one district overlaps with another district. This is particularly useful when comparing old and new versions of districts. To make these comparisons, we often use the `st_intersection()` function. For example, suppose we wanted to see what districts intersect with the old CD 13.
+
+```{r}
+#| echo: false
+
+ush %>%
+  filter(cd==13) %>%
+  st_intersection(ush_remedial) %>%
+  st_drop_geometry() %>%
+  count(cd_new)
+```
+We can develop a more useful function that illustrates the amount of overlapping land area contained in one or more districts based on this command.
+
+```{r}
+#area function
+area_fn <- function(x,y){
+  x <- x %>% mutate(area.x = sf::st_area(.),id_x = 1:n())
+  y <- y %>% mutate(area.y = sf::st_area(.),id_y= 1:n())
+  
+  sf::st_intersection(x, y) %>% 
+    dplyr::mutate(
+      area       = sf::st_area(.),
+      proportion_x = as.numeric(area / area.x),
+      proportion_y = as.numeric(area / area.y)
+    ) %>%
+    tibble::as_tibble() %>%
+    dplyr::select(
+      id_x,id_y,
+      proportion_x,
+      proportion_y
+    ) 
+}
+```
+
+Evaluating this function reports back the district(s) of interest along with the intersections, as well as the share of the area contained in each intersection (both in terms of the district of interest and in terms of the district it intersects with).
+
+```{r}
+#| echo: false
+
+ush %>%
+  filter(cd==13) %>%
+  area_fn(ush_remedial)
+```
+
+Making use of the results of this function, now create a map that illustrates both the old districts where the composition of the district changed meaningfully as well as the new districts that they intersect with. Focus on at least one of CDs 4, 5, 6, 7 or 13. Find a nice way to present this visually!
+
+## Answer Three (Stretch)
+
+```{r}
+#| label: answer-three
+
+# Step 1: Use area_fn() to compute overlaps between ush and ush_remedial
+#         (remember to call st_make_valid() on both first)
+
+# Step 2: Pick a district of interest (e.g., cd 13) and filter the overlaps
+
+# Step 3: Use ush and ush_remedial to extract the relevant old/new geometries
+
+# Step 4: Build a ggplot with:
+#   - geom_sf() for the new (remedial) districts, filled by district number
+#   - geom_sf() for the old district boundaries overlaid in red (fill = NA)
+#   - Labels for district numbers
+
+```
+
+
