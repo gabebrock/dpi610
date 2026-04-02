@@ -1,0 +1,575 @@
+---
+title: "Homework Assignment 3"
+subtitle: "DPI 610"
+format: pdf
+fig-align: center
+fig-width: 7
+fig-height: 5
+
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Assignment Details
+
+This homework assignment is due _March 30, 2026_ before midnight. Everyone must complete their own code and assignment, though you may discuss the homework with classmates.
+
+To access the code and data for the assignment, go to Posit.cloud or Canvas. To turn in the assignment, upload two files to Canvas: (1) your code file (.qmd), and (2) a PDF version (click Render to create PDF).
+
+```{r}
+#| label: setup
+
+pkgs <- c("sf", "tidyverse", "tigris", "geomander", "spdep", 
+          "redist", # optional, for Q6 only
+          "kableExtra", "urbnthemes")
+
+check_pkgs <- function(pkgs) {
+  for (pkg in pkgs) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+  }
+  library(pkg, character.only = TRUE)
+  }
+}
+
+check_pkgs(pkgs)
+sf_use_s2(FALSE)  # Use planar geometry; avoids edge cases with s2 spherical geometry
+
+## load data
+load("hw3.RData")
+```
+
+# Introduction
+
+In this assignment, you will be analyzing spatial data in Massachusetts. We will begin by exploring some characteristics of local towns and then we will expand to study the entire state.
+
+We have loaded three different local spatial data objects: `local_tracts` (census tract data with variables `inc` for *household median income* and `pop` for *population*), `local_votes` (precinct data with `dvoteshare` for 2020 Presidential *Democratic vote share*), and `local_boundary` (shapefile boundary for local towns). We have also loaded `mainroads`, which contains line geometries for two major roads in the area (Massachusetts Avenue and Alewife Brook Parkway).
+
+For later in the problem set we also include `tracts` (the same census tract data for the full state) and `votes` (the same election data for the whole state, with variables `pre_20_dem_bid`, `pre_20_rep_tru`, `dvoteshare`, and `pop`).
+
+The plot below illustrates census tract level median household income in our local area.
+
+```{r}
+#| label: intro
+#| fig-cap: Local Median HH Income by Census Tract
+#| echo: false
+
+ggplot() +
+  geom_sf(data = local_tracts, aes(fill = inc)) +
+  geom_sf(data = local_boundary, color = "red", fill = NA, linewidth = 0.6) +
+  geom_sf_label(data = local_boundary, aes(label = NAME),
+                size = 1.5,
+                color = "black",
+                fill = "white") +
+  scale_fill_gradient(
+    low = "honeydew",
+    high = "#003300",
+    name = "Median HH Income",
+    labels = scales::label_number(scale = 0.001, suffix = "K")
+  ) +
+  theme_void() +
+  theme(legend.position = "bottom")
+```
+
+\newpage
+# Geography
+
+## Question 1
+What town has the highest and lowest median household income census tract? (Hint: To figure out which tracts are in which town, you can use spatial functions such as `st_join()` in tandem with `st_buffer()`, or you may plot it and identify them visually.) Use the code for the plot above and modify it to highlight the wealthiest and poorest tracts on the map. Briefly comment on the spatial pattern of income in the area.
+
+**Answer 1**
+
+```{r}
+#| label: Q1
+#| fig-cap: Highest (Green) and Lowest (Red) Median HH Income Census Tracts
+
+sf1 <- st_join(local_tracts, local_boundary,
+               largest = TRUE) #' if tract touches two towns, 
+                               #' assign to town that contains more area
+# highest HH income tract
+sf1 %>% arrange(desc(inc)) %>%
+  head(n = 1) %>% select(NAME, GEOID.x, inc) -> q1a
+
+poly1 <- local_tracts %>% filter(GEOID == q1a[[2]])
+
+# lowest HH income tract
+sf1 %>% arrange((inc)) %>%
+  head(n = 1) %>% select(NAME, GEOID.x, inc) -> q1b
+
+poly2 <- local_tracts %>% filter(GEOID == q1b[[2]])
+
+# map highest/lowest census tracts
+ggplot() +
+  geom_sf(data = local_tracts) +
+  geom_sf(data = local_boundary, color = "black", fill = NA, linewidth = 0.6) +
+  geom_sf(data = poly1, fill = "green", color = "black") +
+  geom_sf(data = poly2, fill = "red", color = "black") +
+  geom_sf_label(data = local_boundary, aes(label = NAME),
+                size = 1.5,
+                color = "black",
+                fill = "white") +
+  theme_void() +
+  theme(legend.position = "bottom")
+
+```
+
+- `r q1a[[1]]` is the town with the highest median household income census tract (GEOID: `r q1a[[2]]`).
+- `r q1b[[1]]` is the town with the highest median household income census tract (GEOID: `r q1b[[2]]`).
+
+```{r, echo=FALSE, include=FALSE}
+rm(poly1, poly2)
+```
+
+\newpage
+## Question 2
+
+The "spatial lag" of a variable, is the *weighted average of that variable's values in neighboring geographic units*. Create a plot illustrating the relationship between each census tract's median household income and the spatial lag of median household income. What does this tell you about the level of spatial autocorrelation of this statistic? Furthermore, what is the Moran's I in this case?
+
+<!-- Hint: Use `poly2nb()` to find neighbors, `nb2listw()` to create spatial weights, and `lag.listw()` to compute the spatial lag. -->
+
+**Answer 2**
+
+```{r}
+#| label: Q2a
+#| fig-cap: Census Tracts Network
+
+#' for each census tract
+  #' find neighboring tracts
+    #' create spatial weights
+    #' compute the spatial lag
+
+# https://www.paulamoraga.com/book-spatial/spatial-neighborhood-matrices.html
+# https://mgimond.github.io/simple_moransI_example/
+
+# ---- Step 1: Define neighboring census tracts ----
+
+#' construct a list of neighbors based on areas with contiguous boundaries
+#' poly2nb() accepts a list of tracts and 
+#' returns a list of class nb with the neighbors of each area
+nb <- poly2nb(local_tracts, queen = TRUE)
+# head(nb)
+
+#' plot the tracts map and overlap the neighborhood structure with the 
+#' plot.nb() function passing the neighbor list and the coordinates of the map
+plot(st_geometry(local_tracts), border = "lightgray")
+plot.nb(nb, st_geometry(local_tracts), add = TRUE)
+
+#' We can plot the neighbors of a given area 
+#' by adding a new column in map representing the neighbors of the area
+cards <- card(nb) # number of neighbors per tract
+max_id <- which.max(cards) # tract with the most neighbors
+
+local_tracts$neighbors <- "other"
+local_tracts$neighbors[max_id] <- "area"
+local_tracts$neighbors[nb[[max_id]]] <- "neighbors"
+```
+
+
+```{r}
+#| label: Q2b
+#| fig-cap: Census Tracts with the Most Neighboring Tracts (9)
+#| echo: false
+
+ggplot(local_tracts) + 
+  geom_sf(aes(fill = neighbors)) +
+  scale_fill_manual(values = c("red2", "green2", "white")) +
+  theme_void()
+```
+
+```{r}
+#| label: Q2c
+#| fig-cap: Association between the Mean HH Income of Tract and the Average MHI of Neighboring Tracts.
+
+# ---- Step 2: Assign weights to the neighbors ----
+
+#' Each neighboring tract will be assigned equal weight when 
+#' computing the neighboring mean income values.
+#' 
+#' To compute a spatial weights matrix based on a binary neighbor list, 
+nbw <- nb2listw(nb, # list with neighbors
+                style = "W", #' coding scheme chosen
+                zero.policy = TRUE) # take into account polys with 0 neighbors
+
+# see the weight of the first three tracts’s neighbors
+  # nbw$weights[1:3]
+  #' These are the weights each neighboring income value 
+  #' will be multiplied by before being summed
+  #' If a polygon has 5 neighbors, each neighbor will have a weight of 1/5 or 0.2 
+  #' This is equivalent to summing all five income values then dividing by 5
+
+# ---- Step 3: Compute the weighted neighbor mean income values ----
+
+#' Compute the average neighbor income value for each polygon
+#' These are the spatially lagged values
+#' Spatial Lag
+Vx <- lag.listw(nbw, local_tracts$inc)
+df <- data.frame(income = local_tracts$inc,
+                 lag_income = Vx)
+
+ggplot(df, aes(x = income, y = lag_income)) +
+  geom_point(shape = 19) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    x = "Median Household Income",
+    y = "Spatial Lag of Income"
+  ) +
+  theme_minimal()
+
+# Fit the linear model
+model <- lm(lag_income ~ income, data = df)
+
+# ---- Step 4: Computing the Moran’s I statistic ---
+moran <- moran.test(local_tracts$inc, nbw)
+moran
+```
+
+- The above scatter plot illustrates a positive spatial autocorrelation. This is affirmed by the moran's I coefficient of `r round(moran$estimate[1], 4)` which is positive, suggesting that as the average household income of any given census tract increases, so does the average household income of it's neighboring tracts.
+
+\newpage
+## Question 3
+
+Repeat Q1 and Q2 but using the `local_votes` data and Democratic vote share (the `dvoteshare` variable). Is there more clustering for Democratic vote share or for median household income? Interpret the meaning of your finding.
+
+**Answer 3**
+
+```{r}
+#| label: Q3a
+#| fig-cap: Highest (Blue) and Lowest (Purple) Democratic Vote Share
+
+# plot(st_geometry(local_votes))
+sf_votes <- st_join(local_votes, local_boundary,
+               largest = TRUE) #' if voter precinct touches two towns, 
+                               #' assign to town that contains more area
+                               
+# plot(sf_votes)
+
+# highest dem vote share precinct
+sf_votes %>% arrange(desc(dvoteshare)) %>%
+  head(n = 1) %>% select(NAME, GEOID20, dvoteshare) -> q3a
+
+poly1 <- local_votes %>% filter(GEOID20 == q3a[[2]])
+
+# lowest dem vote share precinct
+sf_votes %>% arrange((dvoteshare)) %>%
+  head(n = 1) %>% select(NAME, GEOID20, dvoteshare) -> q3b
+
+poly2 <- local_votes %>% filter(GEOID20 == q3b[[2]])
+
+# map highest/lowest precincts
+ggplot() +
+  geom_sf(data = local_votes) +
+  geom_sf(data = local_boundary, color = "black", fill = NA, linewidth = 0.6) +
+  geom_sf(data = poly1, fill = "blue1", color = "black") +
+  geom_sf(data = poly2, fill = "purple2", color = "black") +
+  geom_sf_label(data = local_boundary, aes(label = NAME),
+                size = 1.5,
+                color = "black",
+                fill = "white") +
+  theme_void() +
+  theme(legend.position = "bottom")
+
+# ---- Moran's Testing Dem Vote Share ----
+# ---- Step 1: Define neighboring voter precincts ----
+
+#' construct a list of neighbors based on areas with contiguous boundaries
+nb <- poly2nb(local_votes, queen = TRUE)
+
+#' We can plot the neighbors of a given area 
+#' by adding a new column in map representing the neighbors of the area
+cards <- card(nb) # number of neighbors per tract
+max_id <- which.max(cards) # tract with the most neighbors
+
+local_votes$neighbors <- "other"
+local_votes$neighbors[max_id] <- "area"
+local_votes$neighbors[nb[[max_id]]] <- "neighbors"
+```
+
+```{r}
+#| label: Q3b
+#| fig-cap: Voter Precinct with the Most Neighboring Precinct (9)
+
+ggplot(local_votes) + 
+  geom_sf(aes(fill = neighbors)) +
+  scale_fill_manual(values = c("red2", "green2", "white")) +
+  theme_void()
+```
+
+```{r}
+#| label: Q3c
+#| fig-cap: Association between the Dem Vote Share of Precinct and the DVS of Neighboring Precincts.
+
+# ---- Step 2: Assign weights to the neighbors ----
+
+#' To compute a spatial weights matrix based on a binary neighbor list, 
+nbw <- nb2listw(nb, style = "W", zero.policy = TRUE)
+
+# ---- Step 3: Compute the weighted neighbor mean income values ----
+
+#' Compute the average neighbor DVS for each precinct
+#' These are the spatially lagged values
+#' Spatial Lag
+Vx <- lag.listw(nbw, local_votes$dvoteshare)
+df <- data.frame(dvs = local_votes$dvoteshare, lag_dvs = Vx)
+
+ggplot(df, aes(x = dvs, y = lag_dvs)) +
+  geom_point(shape = 19) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(x = "Democratic Vote Share (DVS)",
+       y = "Spatial Lag of DVS"
+  ) +
+  theme_minimal()
+
+# Fit the linear model
+model2 <- lm(lag_dvs ~ dvs, data = df)
+
+# ---- Step 4: Computing the Moran’s I statistic ---
+moran2 <- moran.test(local_votes$dvoteshare, nbw)
+moran2
+```
+
+- Moran I estimate for Democratic vote share (DVS) than median household income (MHI), `r round(moran2$estimate[1], 4)` compared to `r round(moran$estimate[1], 4)`. The DVS of a precinct is far more positively associated with the DVS of its neighboring precincts than MHI is for precincts. This suggests that voting behavior (DVS) is more spatially clustered and locally homogeneous than economic status (MHI) and suggests that in the sample area, if people in neighboring precincts do not earn similarly, they still tend to vote similarly.
+
+\newpage
+## Question 4
+
+Below is a map illustrating the locations of Whole Foods grocery stores in nearby towns. Note that it also includes two major roads in the area, Massachusetts Avenue and Alewife Brook Parkway (`mainroads`).
+
+```{r}
+#| label: Q4a
+#| fig-cap: Local Whole Foods in Towns with Major Roads
+
+# Load Whole Foods in Middlesex County
+# Requires: tidygeocoder, glue (used via :: below)
+wholefoods <- tidygeocoder::geo(
+  address =
+    glue::glue("Whole Foods Market, {local_boundary %>% pull(NAME)}, Middlesex County, MA"),
+    full_results = TRUE,
+    limit = 100) %>%
+  filter(!is.na(lat)) %>%
+  st_as_sf(coords = c("long", "lat"), crs = st_crs(local_tracts))
+
+ggplot() +
+  geom_sf(data = local_tracts, fill = NA, color = "lightgray") +
+  geom_sf(data = local_boundary, color = "red", fill = NA, linewidth = 1) +
+  geom_sf(data = mainroads, color = "orange") +
+  geom_sf(data = wholefoods, color = "darkgreen", shape = 2) +
+  geom_sf_label(data = local_boundary, aes(label = NAME),
+                size = 1.5,
+                color = "black",
+                fill = "white") +
+  theme_void()
+```
+
+Use `st_join()` to determine which local tracts have a Whole Foods. Compare the tracts with a Whole Foods to those without a Whole Foods on the following dimensions:
+(1) distance of the centroid of the tract from a major road; (2) population density; (3) household median income.
+What do these comparisons suggest about where Whole Foods chooses to locate?
+
+Hint: Recall that you can use spatial functions `st_centroid()`, `st_area()`, and `st_distance()`.
+
+**Answer 4**
+```{r}
+#| label: Q4b
+#| fig-cap: Cambridge-Area Census Tracts with Whole Foods
+
+# census tracts with a Whole Foods
+
+# Note that in general the command
+# data %>%
+#   mutate(centroid = st_centroid(geometry))
+# will create a column with the coordinates for the centroid
+# (a point towards the middle of a shape)
+# for each row
+
+Q4 <- st_join(local_tracts, wholefoods) %>%
+  mutate(WF = if_else(!is.na(place_id), 1, 0))
+
+Q4 <- Q4 %>% 
+  mutate(centroid = st_centroid(geometry), 
+         dist = st_distance(centroid, mainroads),
+         pop_density = pop / (as.numeric(st_area(.)) / 1e6))
+
+ggplot(Q4) +
+  geom_sf() +
+  geom_sf(data = local_boundary, color = "grey20", fill = NA, linewidth = 0.3) +
+  geom_sf(data = Q4 %>% filter(WF == 1), fill = "grey70") +
+  geom_sf(data = mainroads, color = "orange") +
+  geom_sf(data = wholefoods, 
+        color = "green4", size = 2, shape = 18) +
+  theme_urbn_map(
+    scale = "discrete",
+    base_size = 8.5,
+    base_family = "sans",
+    base_line_size = 0.5,
+    base_rect_size = 0.5
+  )
+
+Q4a <- Q4 %>%
+  filter(WF == 1)
+
+Q4b <- Q4 %>%
+  filter(WF == 0)
+
+```
+
+- For tracts with a Whole Foods in the Greater-Cambridge Area, the average distance of the tract centroid from a major road is `r round(mean(Q4a$dist))`, the population density is population density `r round(mean(Q4a$pop_density))`, and the household median income is `r round(mean(Q4a$inc))`.
+
+- For all other tracts, the average distance of the tract centroid from a major road is `r round(mean(Q4b$dist))`, the population density is population density `r round(mean(Q4b$pop_density))`, and the household median income is `r round(mean(Q4b$inc))`.
+
+\newpage
+# Statewide Analysis
+
+## Question 5
+
+Now, we will expand our analysis to the whole state. Compare the vote share of precincts with Whole Foods to the vote share of precincts with Walmarts in Massachusetts. Also compare the median household income of census tracts with Whole Foods to those with Walmarts. What does this comparison reveal about the relationship between retail geography, income, and political preferences? See the code and map below as a start.
+
+```{r}
+#| label: Q5
+#| fig-cap: Massachusetts Whole Foods and Walmart Locations
+
+# Download locations of all Walmarts and Whole Foods in MA
+# Requires: tidygeocoder (used via :: below)
+stores <- tidygeocoder::geo(
+  address =
+    c("Walmart, MA", "Whole Foods Market, MA"),
+  full_results = TRUE,
+  limit = 1000) %>%
+  filter(!is.na(lat), class == "shop") %>%
+  st_as_sf(coords = c("long", "lat"),
+           crs = st_crs(local_tracts)) %>%
+  st_filter(st_union(tracts)) %>%
+  mutate(
+    store = ifelse(str_detect(address, "Walmart"),
+                   "Walmart", "Whole Foods"))
+
+ggplot() +
+  geom_sf(data = st_union(tracts), fill = NA) +
+  geom_sf(data = stores, aes(color = store, shape = store)) +
+  scale_color_manual(
+    values = c("Whole Foods" = "darkgreen", "Walmart" = "dodgerblue")
+    ) +
+  labs(color = "Store", shape = "Store") +
+  theme_void() +
+  theme(legend.position = "bottom")
+```
+
+**Answer 5**
+
+```{r}
+#| label: Q5a
+#| fig-cap: Massachusetts Census Tracts with a Whole Foods (Green) or Walmart (Blue)
+
+sf3 <- tracts %>%
+  st_join(stores)
+
+# plot(st_geometry(sf3))
+
+ggplot() + 
+  geom_sf(data = sf3, fill = NA, color = "grey80") +
+  geom_sf(data = sf3 %>% filter(store == "Walmart"), 
+          color = "dodgerblue", fill = "dodgerblue") +
+  geom_sf(data = sf3 %>% filter(store == "Whole Foods"), 
+          color = "darkgreen", fill = "darkgreen") + 
+  theme_void()
+
+```
+
+```{r}
+#| label: Q5b
+#| fig-cap: Voter Precincts with a Whole Foods (Green) or Walmart (Blue) 
+
+#' Compare the vote share of precincts with Whole Foods to the DVS of 
+#' precincts with Walmarts in Massachusetts.
+
+sf4 <- votes %>%
+  st_join(stores) 
+
+ggplot() + 
+  geom_sf(data = sf4, fill = NA, color = "grey80") +
+  geom_sf(data = sf4 %>% filter(store == "Walmart"), 
+          color = "dodgerblue", fill = "dodgerblue") +
+  geom_sf(data = sf4 %>% filter(store == "Whole Foods"), 
+          color = "darkgreen", fill = "darkgreen") + 
+  theme_void()
+```
+
+
+```{r}
+#| label: Q5c
+#| fig-cap: Average DVS of Voter Precincts with a Whole Foods (Green) or Walmart (Blue)
+  
+Q5c <- sf4 %>%
+  filter(store %in% c("Walmart", "Whole Foods")) %>%
+  group_by(store) %>%
+  summarize(avg_dvs = mean(dvoteshare)) %>%
+  st_drop_geometry()
+
+Q5c %>% kbl()
+
+t.test(dvoteshare ~ store, 
+       data = sf4 %>% 
+                filter(store %in% c("Walmart", "Whole Foods")) %>% 
+                st_drop_geometry())
+
+```
+
+```{r}
+#| label: Q5d
+#| fig-cap: Average MHI of Voter Precincts with a Whole Foods (Green) or Walmart (Blue)
+
+#' Compare the MHI of census tracts with Whole Foods to those with Walmarts
+
+Q5d <- sf3 %>%
+  filter(store %in% c("Walmart", "Whole Foods")) %>%
+  group_by(store) %>%
+  summarize(avg_mhi = mean(inc)) %>%
+  st_drop_geometry() 
+
+Q5d %>% kbl()
+
+t.test(inc ~ store, 
+       data = sf3 %>% 
+                filter(store %in% c("Walmart", "Whole Foods")) %>% 
+                st_drop_geometry())
+
+```
+
+- The Democratic vote share (DVS) of Massachusetts precincts with Whole foods is `r round(Q5c$avg_dvs[2], 3)` compared to the DVS in Walmart precincts of `r round(Q5c$avg_dvs[1], 3)`, meaning that Whole Foods precincts have a DVS approximately `r round(Q5c$avg_dvs[2] - Q5c$avg_dvs[1], 3) * 100`\% higher than Walmart precincts. There is some evidence that Whole Foods precincts lean more Democratic than Walmart precincts but the difference is not statistically significant (t-test $p = 0.1353$). This indicates that, at least in Mass, there is a negligible political difference (expressed as Dem vote share) between voter precincts with Walmarts and those with Whole Foods.
+
+- The median household income (MHI) of Mass census tracts with Whole Foods is `r scales::dollar(Q5d$avg_mhi[2])` compared to `r scales::dollar(Q5d$avg_mhi[1])` in Walmart tracts, meaning that Whole Foods precincts have a MHI approximately \$`r scales::dollar(Q5d$avg_mhi[2] - Q5d$avg_mhi[1])`. This difference is substantively and statistically significant (t-test $p < 0$) indicating that there is a correlation between higher median household income and the location of a Whole Foods (relative to Walmart).
+
+\newpage
+# Redistricting
+
+## Question 6 (Optional Challenge Question)
+
+What is the maximum number of congressional districts you can draw in Massachusetts that are Republican based on 2020 two-party Presidential election vote share? Use the shortburst algorithm with a burst size of 20 and 1000 bursts to find an answer.
+
+What is the Democratic vote share in the *most Republican* district that you can draw? What is the compactness in terms of Polsby-Popper of the least compact district?
+
+**Answer 6**
+
+```{r}
+#| label: Q6
+
+# Insert Answer Here
+
+# Hint to get started
+# First we create a Redist Map Object
+ma <- redist_map(
+  votes %>%
+    mutate(
+      tot = pre_20_dem_bid + pre_20_rep_tru
+      ),
+  pop_tol = .01,
+  total_pop = "pop",
+  ndists = 9,
+  planarize = st_crs(votes))
+
+# Use the following seed for reproducibility
+set.seed(4)
+
+# Now the next step is to run shortburst as in class lab solutions!
+
+```

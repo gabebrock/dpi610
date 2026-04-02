@@ -1,0 +1,457 @@
+---
+title: "Homework Assignment 2"
+subtitle: "DPI 610"
+format:
+  pdf: default
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Assignment Details
+
+This homework assignment is due _March 11, 2026_ before midnight. Everyone must complete their own code and assignment, though you may discuss the homework with classmates.
+
+\textcolor{red}{Parts 1 and 2 are required for completing the homework. You will get full credit for just doing Parts 1 and 2. Part 3 contains an optional challenge question that will give you exposure to prediction across samples!}
+
+To access the code and data for the assignment, go to Posit.cloud.
+\textcolor{red}{To turn in the assignment, upload two files to Canvas: (1) your code file (.Qmd), and (2) a PDF (render to create PDF).}
+
+```{r}
+#| echo: false
+
+# Setup
+# The following code loads the data set and packages necessary to complete
+# the problem set. Please make sure to run the following code before starting.
+
+# Load packages
+library(tidyverse)
+library(janitor)
+library(mlr3verse)
+library(mlr3pipelines)
+library(mlr3learners)
+library(broom)
+library(knitr)
+library(kableExtra)
+library(GenSA)
+
+# Suppress verbose mlr3 log messages
+lgr::get_logger("mlr3")$set_threshold("error")
+
+# Load Data
+load("hw2.RData")
+# This loads: nc, nc_cces, fl, fl_cces, train_id, test_id
+```
+
+:::{.callout-note}
+## Survey Data: Key Variables
+The North Carolina CCES survey dataset (`nc_cces`) contains the following variables used in Question 1:
+
+| Variable | Description |
+|----------|-------------|
+| `voted_pres_12` | 2012 presidential vote choice (e.g., "Barack Obama", "Mitt Romney") |
+| `voted_pres_16` | 2016 presidential vote choice (e.g., "Hillary Clinton", "Donald Trump") |
+| `pid3` | Party identification: "D" (Democrat), "R" (Republican), "I" (Independent) |
+| `age` | Respondent age |
+| `familyincome` | Family income (numeric scale) |
+| `college_grad_prob` | Estimated probability of being a college graduate |
+| `gender` | Respondent gender |
+| `married_prob` | Estimated probability of being married |
+:::
+
+\newpage
+# Part 1: Voter Behavior and Turnout Prediction (Required)
+
+This section uses North Carolina voter and survey data to analyze voter behavior and build a predictive model of voter turnout.
+
+## Question 1: Obama/Trump Voters
+
+The CCES is a survey conducted before and after presidential and midterm election years. There are slightly more than 2000 respondents for North Carolina. The survey data is an important tool for understanding the political views of voters. This question asks you to use some R functions to summarize some key insights from the data.
+
+### Question 1(a)
+
+How many voters in the survey data voted for Barack Obama in 2012 and Donald Trump in 2016? What share of the full sample is this? (Hint: Look at the variables `voted_pres_12` and `voted_pres_16`.)
+
+### Answer 1(a)
+```{r}
+voted_2012 <- nc_cces %>% count(voted_pres_12)
+voted_2016 <- nc_cces %>% count(voted_pres_16)
+
+votes_q1 <- nc_cces %>%
+  group_by(voted_pres_12, voted_pres_16) %>%
+  count()
+```
+
+- Of the `r voted_2012[2, 2]` people who voted for Obama in 2016 and `r voted_2016[3, 2]` who voted for Trump in 2016, `r votes_q1[6, 3]` voted for both.
+
+### Question 1(b)
+
+Define a new indicator variable in `nc_cces` called `obama_trump` that takes `1` if a respondent voted for Barack Obama in 2012 and switched to Donald Trump in 2016, and takes `0` otherwise.
+
+### Answer 1(b)
+```{r}
+
+nc_cces <- nc_cces %>%
+  mutate(
+    obama_trump = if_else(voted_pres_12 == "Barack Obama" & 
+                          voted_pres_16 == "Donald Trump", 1, 0)
+  )
+
+```
+
+### Question 1(c)
+
+How do "Obama-Trump" voters in the CCES sample compare to the other survey respondents in terms of age, family income, and having a college education?
+
+Compare the two groups in terms of the mean of age (`age`), the mean of family income (`familyincome`), and the proportion of college graduates (`college_grad_prob`). What do these comparisons suggest about the profile of Obama-Trump voters?
+
+### Answer 1(c)
+
+```{r}
+
+nc_cces %>% 
+  group_by(obama_trump) %>%
+  summarize(
+    mean_age = mean(age, na.rm = TRUE),
+    mean_income = mean(familyincome, na.rm = TRUE),
+    prop_college_grad = mean(college_grad_prob, na.rm = TRUE)
+  )
+
+```
+
+- Obama/Trump voters were older, poorer, and less college educated than the general electorate surveyed.
+
+### Question 1(d)
+
+How do "Obama-Trump" voters in this sample compare to other survey respondents in terms of their stated partisan identification? (Hint: Look at variable `pid3`.)
+
+Report your answer as a share of the voters in each group (i.e., Democrats comprise XX% of all Obama-Trump voters, Republicans comprise XX% of all Obama-Trump voters, and so on).
+
+### Answer 1(d)
+
+```{r}
+
+obama_trump_pid <- nc_cces %>%
+  group_by(obama_trump, pid3) %>%
+  summarize(n = n(), .groups = "drop") %>%
+  group_by(obama_trump) %>%
+  mutate(share = n / sum(n))
+
+obama_trump_pid %>%
+  filter(pid3 %in% c("Democrat", "Independent", "Republican")) %>%
+  kbl()
+
+percent <- function(value) {
+  round(value, 3) * 100
+}
+
+```
+
+- Among voters who voted for Obama in 2012 and Trump in 2016, `r percent(obama_trump_pid[6, 4])`% were Democrats, `r obama_trump_pid[10, 4]`% were Republicans, and `r obama_trump_pid[7, 4]`% were Independents. Among all other voters, `r percent(obama_trump_pid[1, 4])`% were Democrats, `r obama_trump_pid[5, 4]`% were Republicans, and `r obama_trump_pid[2, 4]`% were Independents. Compared to the rest of the sample, Obama/Trump voters were far more likely to identify as Independents and less likely to identify as Democrats. The share identifying as Republicans is similar between the groups.
+
+\newpage
+## Question 2: Predicting Voter Turnout
+
+In Question 1 we used survey data to describe *who* switched parties. Now we shift to a different question: can we *predict* whether someone will vote? We move from the CCES survey (`nc_cces`) to the full NC voter file (`nc`), which has a much larger sample with demographic and behavioral variables. We will use the `mlr3` framework --- the same approach from the Week 4 lab --- to predict voter turnout in 2014.
+
+:::{.callout-note}
+## Data for Question 2
+The `nc` voter file and `nc_cces` survey share several common variables (e.g., `age`, `familyincome`, `married_prob`), but `nc` is much larger and includes voting history and additional demographic variables not available in the survey. The objects `train_id` and `test_id` (loaded from `hw2.RData`) contain pre-selected voter IDs for splitting `nc` into training and test sets.
+:::
+
+The code below prepares the data and trains a logistic regression model on the training set. This follows the same 4-step workflow from lab:
+
+```{r}
+# Prepare data for prediction
+turnout_vars <- c("voted2014", "voted2008", "voted2010", "voted2012",
+                  "age", "party", "familyincome", "density",
+                  "homeowner_score", "married_prob", "socioecon_bg")
+
+nc_model <- nc %>%
+  select(id, all_of(turnout_vars)) %>%
+  drop_na() %>%
+  mutate(across(c(voted2014, voted2008, voted2010, voted2012),
+                \(x) fct_relevel(as.factor(x), "1")),
+         across(c(party, density, socioecon_bg), \(x) as.factor(x)))
+
+nc_train <- nc_model %>% filter(id %in% train_id) %>% select(-id)
+nc_test <- nc_model %>% filter(id %in% test_id) %>% select(-id)
+
+# Step 1: Define tasks
+task_train <- as_task_classif(nc_train, target = "voted2014", positive = "1",
+                               id = "nc_turnout", drop_levels = TRUE)
+task_test <- as_task_classif(nc_test, target = "voted2014", positive = "1",
+                              id = "nc_turnout_test", drop_levels = TRUE)
+
+# Step 2: Choose learner
+learner <- lrn("classif.log_reg", predict_type = "prob")
+
+# Step 3: Train
+set.seed(02139)
+learner$train(task_train)
+```
+
+### Question 2(a)
+
+What is the theoretical basis for including past voter behavior in a model of voter turnout?
+
+- Including past voter behavior in a model of voter turnout is helpful because once individuals vote in an election, they are more likely to vote again in future elections.
+
+### Question 2(b)
+
+You can examine the model coefficients using `coef(learner$model)`. The coefficient on age is `r round(coef(learner$model)["age"], 3)`. What is the interpretation of this coefficient? (Remember: in logistic regression, coefficients represent changes in log-odds.)
+
+- The coefficient on age `r round(coef(learner$model)["age"], 3)` represents the change in log-odds of voting in 2014 for each additional year of age, holding all other variables constant. Exponentiating gives $e^{0.015} ≈ 1.015$, meaning each additional year of age is associated with roughly a percent(round(coef(learner$model)["age"], 3))\% increase in the odds of turning out to vote. This is consistent with the well-established pattern that older citizens vote at higher rates.
+
+### Question 2(c)
+
+Use the trained model to predict turnout in the test set. Report the accuracy, precision, and recall. Then create a histogram of the predicted probabilities. At what range of the distribution do you think it makes the most sense to target voters when seeking to boost their turnout?
+
+:::{.callout-tip}
+## Hint
+Store the result: `predictions <- learner$predict(task_test)`. Then use `predictions$score()` with a list of `msr()` calls to evaluate performance. The metric names are `"classif.acc"`, `"classif.precision"`, and `"classif.recall"`. For the histogram, convert the predictions to a tibble with `as.data.table() %>% as_tibble()` — this gives you a tidy data frame with a `prob.1` column you can plot with `ggplot()` and `geom_histogram()`.
+:::
+
+```{r}
+predictions <- learner$predict(task_test)
+
+predictions$score(list(
+  msr("classif.acc"),
+  msr("classif.precision"),
+  msr("classif.recall")
+))
+
+pred_tbl <- as.data.table(predictions) %>% as_tibble()
+
+ggplot(pred_tbl, aes(x = prob.1)) +
+  geom_histogram(bins = 40, fill = "steelblue", color = "white") +
+  labs(
+    title = "Predicted Probability of Voting in 2014",
+    x = "Predicted Probability",
+    y = "Count"
+  ) +
+  theme_bw()
+```
+
+- The model achieved high accuracy (`r predictions$score(msr("classif.acc"))`), precision (`r predictions$score(msr("classif.precision"))`), and recall (`r predictions$score(msr("classif.recall"))`), reflecting that most voters in the dataset did turn out. Further, the histogram is bimodal, indicating that many voters have very high predicted probabilities (habitual voters) and and a smaller but estimable number have very low probabilities (chronic non-voters), with relatively few in the middle.  The most cost-effective strategy would be to target roughly 0.5–0.75, these are voters who are persuadable (not already certain to vote) but have some baseline propensity (not so disengaged that contact is futile).
+
+### Question 2(d)
+
+In the steps above, we manually split the data, created separate tasks, trained, and predicted. The `mlr3` framework provides a way to do all of this in one step using `resample()`. The code below sets up the task, a custom train/test split, and a fresh learner. Run `resample()` to train, predict, and score in one step, and confirm that you get the same accuracy, precision, and recall as in Question 2(c).
+
+```{r}
+# Create a single task from all data
+task_all <- as_task_classif(nc_model %>% select(-id),
+                            target = "voted2014", positive = "1",
+                            id = "nc_turnout_all", drop_levels = TRUE)
+
+# Define custom train/test split using row indices
+split <- rsmp("custom")
+split$instantiate(task_all,
+                  train = list(which(nc_model$id %in% train_id)),
+                  test = list(which(nc_model$id %in% test_id)))
+
+# Fresh learner for resampling
+learner_resample <- lrn("classif.log_reg", predict_type = "prob")
+set.seed(02139)
+```
+
+### Answer 2(d)
+
+```{r}
+#Insert answer here
+
+```
+
+### Question 2(e)
+
+In Question 2(c), the model used a default classification threshold of 0.5 to decide whether to predict "voted" or "did not vote." But 0.5 is not always optimal --- choosing a different threshold changes the tradeoff between precision and recall.
+
+The `mlr3pipelines` package provides `po("tunethreshold")`, which automatically searches for the threshold that maximizes a given metric using internal cross-validation. The code below sets up a pipeline that tunes the threshold to maximize the F1 score (the harmonic mean of precision and recall). Run it and compare the results to the baseline from Question 2(d) in a single table showing accuracy, precision, recall, and F1 for both approaches.
+
+```{r}
+# Define F1 measure with fallback for edge cases
+f1_measure <- msr("classif.fbeta")
+f1_measure$na_value <- 0
+
+# Build pipeline: learner with internal CV -> threshold tuning
+learner_f1 <- as_learner(
+  po("learner_cv", lrn("classif.log_reg", predict_type = "prob"),
+     resampling.folds = 5) %>>%
+  po("tunethreshold", measure = f1_measure)
+)
+learner_f1$predict_type <- "prob"
+set.seed(02139)
+```
+
+:::{.callout-tip}
+## Hint
+Run `resample()` with `learner_f1` using the same `task_all` and `split` from Question 2(d). Then combine the scores from both the baseline and F1-tuned models into a single table using `bind_rows()`. Include `msr("classif.fbeta")` alongside the other metrics. To extract the tuned threshold, look at `rr_f1$learners[[1]]$model$tunethreshold$threshold`.
+:::
+
+### Answer 2(e)
+
+```{r}
+#Insert answer here
+
+```
+
+# Part 2: Heterogeneous Treatment Effects (Required)
+
+This section uses the Florida experiment data (`fl`) to explore heterogeneous treatment effects from a get-out-the-vote (GOTV) field experiment.
+
+:::{.callout-note}
+## Florida Experiment Data: Key Variables
+
+| Variable | Description |
+|----------|-------------|
+| `treat` | Treatment indicator: 1 = received social pressure mailing, 0 = control |
+| `voted06`, `voted08`, `voted10`, `voted12` | Past turnout: 1 = voted in that year, 0 = did not |
+| `voted14` | Outcome: 1 = voted in 2014, 0 = did not |
+| `female` | 1 = female, 0 = male |
+| `age` | Respondent age |
+| `race` | Respondent race |
+| `married` | Marital status |
+:::
+
+## Question 3: Heterogeneous Treatment Effects
+
+### Question 3(a)
+
+The intervention involved sending a postcard with someone's past voting history on it and telling the recipient if he or she voted more than the typical person in the state. Would you hypothesize that the ATE is: (1) larger for people with a history of regular voting, (2) larger for people with a history of not voting, or (3) the same for both types? Why?
+
+### Answer 3(a)
+
+*Insert answer here.*
+
+### Question 3(b)
+
+Create a new variable called `vote_history` and store the individual-level propensity to vote by computing the proportion of turnout for each person between 2006 and 2012 (use `voted06`, `voted08`, `voted10`, and `voted12`).
+
+Then, determine the average past turnout in the state according to this measure by computing the mean of `vote_history`. Create a second new variable that indicates people with lower than average turnout in the Florida data.
+
+### Answer 3(b)
+
+```{r}
+#Insert answer here
+
+```
+
+:::{.callout-tip}
+## Estimating HTEs with Interaction Terms
+To test whether a treatment effect differs across subgroups, use `lm()` with an interaction term:
+
+```r
+model <- lm(outcome ~ treatment * subgroup, data = df)
+```
+
+In this regression, the coefficient on `treatment` gives the ATE for the reference group (where `subgroup == 0`), and the coefficient on `treatment:subgroup` gives the *difference* in treatment effects between the two groups.
+:::
+
+### Question 3(c)
+
+Estimate the average treatment effects for (1) those with lower past turnout than average in the state and (2) those with past turnout greater than or equal to the average in the state. Which effect is larger? Is the difference statistically significant? Does this support your hypothesis from Question 3(a)?
+
+### Answer 3(c)
+
+```{r}
+#Insert answer here
+
+```
+
+### Question 3(d)
+
+What do these results suggest about the ability of social-pressure based GOTV efforts to turn out voters who have not voted in the past?
+
+### Answer 3(d)
+
+*Insert answer here.*
+
+### Question 3(e)
+
+Estimate the difference in treatment effects for (1) men versus women and (2) people whose age is young versus middle versus older (18--29, 30--64, and 65+). Briefly interpret the result.
+
+:::{.callout-tip}
+## Hint
+To create age groups, use `case_when()` inside `mutate()`:
+
+```r
+fl <- fl %>%
+  mutate(age_group = case_when(
+    age < 30 ~ "18-29",
+    age >= 30 & age < 65 ~ "30-64",
+    age >= 65 ~ "65+"
+  ))
+```
+
+Convert to a factor with `factor()` to set the reference category (i.e., which group appears in the intercept).
+:::
+
+### Answer 3(e)
+
+```{r}
+#Insert answer here
+
+```
+
+# Part 3: Prediction Across Samples (Optional)
+
+:::{.callout-tip}
+## About This Question
+This question connects Part 1 (prediction) with Part 2 (causal inference). You will use a prediction model trained on survey data to classify voters in the experiment by party, then estimate whether the GOTV treatment had different effects for predicted Republicans versus non-Republicans.
+:::
+
+## Question 4: Partisan HTEs via Prediction Across Samples
+
+In Part 2, we examined heterogeneous treatment effects by voter history, gender, and age. But a key question for campaigns is whether untargeted GOTV efforts help one party more than the other. The problem is that in the Florida experiment, subjects' party registration statuses were not available.
+
+We can solve this using **prediction across samples**: train a model on survey data (where we observe partisanship) and then apply it to the experimental data (where we do not).
+
+The code below prepares the Florida CCES survey data and trains a logistic regression model that predicts Republican party identification. We use the same `mlr3` workflow from earlier in the assignment:
+
+```{r}
+# Prepare survey data
+fl_cces_model <- fl_cces %>%
+  mutate(republican = factor(pid3 == "R",
+                             levels = c(TRUE, FALSE),
+                             labels = c("Yes", "No"))) %>%
+  select(republican, female, married, age, race) %>%
+  drop_na() %>%
+  mutate(across(where(is.character), \(x) as.factor(x)))
+
+# Step 1: Define task
+task_party <- as_task_classif(fl_cces_model, target = "republican",
+                               positive = "Yes", id = "party_predict",
+                               drop_levels = TRUE)
+
+# Step 2: Build a pipeline that tunes the classification threshold
+# (Republicans are a minority, so the default 0.5 threshold would classify
+# nearly everyone as non-Republican. tunethreshold finds the optimal cutoff.)
+party_f1 <- msr("classif.fbeta")
+party_f1$na_value <- 0
+
+party_learner <- as_learner(
+  po("learner_cv", lrn("classif.log_reg", predict_type = "prob"),
+     resampling.folds = 5) %>>%
+  po("tunethreshold", measure = party_f1)
+)
+
+# Step 3: Train on survey data
+set.seed(02139)
+party_learner$train(task_party)
+```
+
+Now use the trained model to predict who is likely to vote Republican in the experimental sample (`fl`). Then calculate treatment effects for predicted Republicans versus non-Republicans. What do you find?
+
+:::{.callout-tip}
+## Hint
+Use `party_learner$predict_newdata()` to make predictions on the `fl` data. You will need to select the same variables used in training (`female`, `married`, `age`, `race`) and convert character columns to factors with `mutate(across(where(is.character), \(x) as.factor(x)))`. The model's tuned threshold is applied automatically when generating `$response`. Then use `lm()` with an interaction term (as in Part 2) to estimate HTEs by predicted party.
+:::
+
+### Answer 4
+
+```{r}
+#Insert answer here
+
+```
