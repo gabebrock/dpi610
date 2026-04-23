@@ -1,0 +1,285 @@
+---
+title: "Geographic Entrenchment during the 2026 Texas Primary in Harris County, TX"
+date: 2026-05-01
+author:
+  - name: Gabriel Brock
+    id: gb
+    orcid: 0009-0005-6958-9516
+    email: gbrock@college.harvard.edu
+    affiliation: 
+      - name: Harvard University
+        city: Cambridge, MA
+        url: https://www.gov.harvard.edu/
+toc: false
+keywords:
+  - elections
+  - spatial-networks
+  - spatial-autocorrelation
+  - morans-i
+  - racial-segregation
+format:
+   arxiv-pdf:
+    keep-tex: true
+bibliography: references.bib
+
+abstract: |
+  A clear and well-documented \LaTeX\ document is presented as an
+  article formatted for publication by ACM in a conference proceedings
+  or journal publication. Based on the "acmart" document class, this
+  article presents and explains many of the common variations, as well
+  as many of the formatting elements an author may use in the
+  preparation of the documentation of their work.
+
+# document settings
+echo: false
+warning: false
+
+fig-align: center
+fig-width: 5
+fig-height: 3
+---
+
+```{r}
+source("scripts/0_setup.R")
+source("scripts/1_loadVoterData.R")
+source("scripts/2_whoWon.R")
+```
+
+# Introduction
+
+It is well established that geography greatly influences politics. Place is important at every level of politics. Even during national contests, there is considerable variability in state-level competitiveness [@mckee2009]. However, states cannot be considered as homogeneous blocks that swing back and forth between Democrat and Republican or progressively become "Bluer" over time. Even under demographic changes, populations cluster together in areas far smaller than regions, states, or counties.
+
+Even though the state has had a state-level Republican trifecta for 20 years and has not had a Democratic Governor or U.S. Senator since 1994, a "blue wave" has been forecast to over take Texas for the past 20 years. Texas leads the nation in population growth, since the state's population has increased nearly 4 million with 95.3% attributable to growth of minority populations and 44% of growth attributable to migration from states like California. Further, many of these new residents have settled inside of the "Texas Triangle." The Triangle, one of eleven megaregions of the United States, contains the state's five largest cities Dallas–Fort Worth, Greater Houston, San Antonio, and Austin. The Triangle is home to over 70% of the state's population, around 21 million people and much of the state's Democratic vote share is concentrated within the region. This demographic change in addition a changing, more diverse economy, has transformed the politics of the Lone Star state, steadily increasing state-wide Democratic vote share even though the party has yet to successfully win any state-wide contests.
+
+In March 2026, Texas State Representative James Talarico of Austin became the stat Democratic Party's nominee for United States Senate defeating US Representative Jasmine Crockett of Dallas. The Democratic Primary for US Senate was one of the most contentious state-wide elections in recent history. There are several prevailing theories about what won Talarico the election, his ability to energize young progressives or Hispanics, but it is clear that he captured a huge portion of the vote share in the most densely-populated region of the state.
+
+Talarico and Crockett both benefited from home base advantage in their respective cities, Austin and Dallas. Talarico won Travis and Bexar Counties by 51 and 15 points and Crockett won Dallas and Tarrant Counties by a collective 30 points. However, this dynamic converged in the third leg of the Triangle, Houston.
+
+# Background
+
+Spatial autocorrelation is the extent to which a variable is correlated with itself through space. Tobler's First Law of Geography tells us that “everything is related to everything else, but near things are more related than distant things” [@tobler1970]. As such, we expect place to have a causal effect on voter behavior [@gimpel2004].
+
+In metropolitan areas, observations (at the unit- and individual-level) are often clustered together. People live near people like them. Regardless of the variable of interest, such as racial residential composition (e.g., % Black), median household income (MHI), education level, there is a general tendency for nearby observations to have similar values, especially within urban areas. Within political boundaries, there is significant clustering of key socioeconomic variables [@frank2002]. Due to the inherent density of urban areas, since VTDs in Harris County are drawn to each have "a population between 100 – 5000 registered voters" [@harriscountyofficeofcountyadministration], the districting process creates relatively heterogeneous rural districts and small, homogeneous urban districts that bring together "proximate individuals with highly correlated preferences" [@rodden2010, p 332].
+
+However, the natural contentedness of spatial networks even in dense, urban areas is influenced by involuntary racial/ethnic/class-based residential segregation [@anderson2021]. Negative spatial autocorrelation occurs when observations with dissimilar values are dispersed [@moraga]. Positive spatial autocorrelation occurs when observations with similar values are clustered. Urban networks are often characterized by High-High and Low-Low autocorrelation wherein areas with of high or low values are surrounded by areas that or similar values (e.g., a high-income neighborhood surrounded by other high-income neighborhoods).
+
+Autocorrelation is especially of note because of the inherent connection between socioeconomic context and voting behavior. The commonality between residents of similar settings, urban, suburban or rural, produce effects that impact voter behavior that that translate into differences across locations [@mckee2009, @gimpel2004]. There is a linkage between the (1) clustering of social networks, (2) the demography of these networks, and (3) how these interact to effect aspects of voter behavior [@mckee2009] and research has demonstrated how demographic factors like income and race are related to key metrics of electoral behavior like voter turnout [@saib2017], vote change [@bracalente] and partisanship [@mckee2009, @hersh2016]. As such, it follows that these factors of voter behavior are (1) also spatially autocorrelated and (2) able to be spatially measured in relation to other factors.
+
+**Sub-county Units**
+
+Existing literature has begun to analyze voting behavior at the sub-county level. Aggregate data analysis diminish the causal effect of geography on electoral contexts [@wing2010]. [@gimpel2004] emphasized the importance of voter behavior within areas that are typically much smaller than states, which has been supported by research analyzing smaller units [@hogrebe2019]. [@hersh2016] identified three issues that necessitate the study of sub-county geographies (1) the geographic clustering of behavior, (2) the arbitrariness of political geography, and (3) their combined influence on redistribution preferences. As such, greater attention has been paid to hyper-local politics, at the voter precinct- or census tract-level. Spatial networks are incredibly sensitive to locality, even apparently diverse neighborhoods have isolated clusters.
+
+**Locality of Voting Behavior**
+
+Wing and Walker [-@wing2010] building on the mechanisms established by Cho and Rudolph [-@cho2008] argue that the same social forces that facilitate political participation contribute to ideological reinforcement at the local level.
+
+Given the positive spatial autocorrelation between election results and demographic variables, as [@hersh2016] highlight, examining smaller geographic units enables us to decouple socioeconomic influence on political behavior, namely race from income. McKee and Teigan found that location significantly relates to partisanship, affirming the claim that regional differences persists even across urban areas [@turner1908, @shelley1989] and that a mixture of compositional, contextual, and historical effects account for the importance of place in influencing electoral outcomes [-@mckee2009]. Since the turn of the century, the political divide has been less easily explained by urban/rural differences and has become more reliably expressed by cultural and economic factors, even in large, dense counties [@morrill2007]. Partisanship is only one aspect of political behavior however. There is high spatial autocorrelation of more general political participation [@yandri2017, @burnett2012] and voter turnout [@preuss1981, @saib2017] and research provides strong evidence of spatial clustering between general voting patterns and demographic distributions [@rochon2020].
+
+Among demographic factors, race and income have an over sized impact on voter behavior. There remains a great degree of inequality in voter behavior correlated with income inequality. However, race conditions this relationship especially in regard to partisanship, in predominantly white districts, the effect of income on partisanship is greatly minimized by race, especially in urban areas [@hersh2015] and Blacks and Latinos are more likely to vote in elections as their population share increases [@fraga2016].
+
+**Focus on Primaries**
+
+Primary competitiveness is highly correlated with the expected competitiveness of the general election [@boatright2018]. As such, it is important to understand *why* people vote the why they do in primary elections and what motivates any patterns in voting behavior.
+
+However, there remains a dearth of research focusing on intra-party competition. Election research has demonstrated the effect of spatial autocorrelation on election results and participation levels in the United States. While it's important to understand the voter geography in presidential elections, this type of micro-analysis is far more consequential for smaller contests like municipal elections or even Congressional elections where the electorate is densely populated. In trying to determine the relationship between candidate vote share and variables like race spatial analysis may produce better model fit and more robust conclusions [@saib2017].
+
+In doing so, this study contributes to the existing literature in spatial research with new assessment on the current election cycle as well as provide insight into the spatial relationship between individual demographic variables and partisan support at the local level.
+
+This study seeks to understand how geography is related to voter behavior in Harris County, TX, a place that while historically democratic has nonetheless suffered from a high-degree of residential segregation and in the past two decades a substantial demographic change. Given that the 2026 Democratic primary was not influenced by incumbency and neither front-runner to the race benefited from hometown advantage in Harris County, we can use the county as a case study to identify any potential spatial relationship between voter demography and voter behavior. In doing so, this study contributes to existing spatial research literature by furthering the assessment of the hyper-local spatial relationship between demography and voter behavior and extending the knowledge set regarding voter preference and intra-party competition.
+
+**Research Questions and Hypotheses**
+
+The relationship between voter behavior race and other socioeconomic variables (e.g., age, gender, income) is commonly modeled in electoral studies. This research is guided by a set of questions interested in more descriptive analysis of the Harris County electorate and effect of place and demography on voting behaviors. I seek to answer the following questions with regards to Harris County:
+
+1.  How is race and income spatially clustered throughout?
+2.  To what degree, if any, is race and income spatially autocorrelated?
+3.  What is the spatial nature of key voting behaviors (turnout and voter preference)?
+4.  To what degree, if any, are demography and key voting behaviors spatially autocorrelated?
+
+I argue that there is a positive spatial autocorrelation between observed voter behavior and demography in Harris County. To test this theory, I set forth the following set of hypotheses:
+
+-   $H_{01}$: There is no observable correlation between demography and candidate vote share across voter districts.
+
+-   $H_{A1}$: There is observable correlation between demography and candidate vote share across voter districts.
+
+-   $H_{02}$: Precinct-level residential racial composition alone is not a sufficient predictor of candidate vote share.
+
+-   $H_{A2}$: Precinct-level residential racial composition alone is a sufficient predictor of candidate vote share.
+
+# Methodology
+
+## Study Area
+
+Harris County is composed of 1,158 voter districts organized into 8 larger regions and 1,115 census tracts (as of 2020), covering 1.77 thousand square miles. As of the 2020 Census, Harris has a population of 4.7 million, making it the most populous county in Texas and the third-most populous county in the United States. In the 2020 general election, Joe Biden won the county by 13%, the widest Democratic margin for since 1964. Though it has shifted towards Democrats in recent years, Harris County has nevertheless voted to the right of Dallas, Travis, Bexar, and El Paso counties, each of which has a smaller population. However, Harris is regarded as swing county in Texas and has been regarded as "surprisingly liberal on topics such as immigration, gun control and equal matrimonial rights for same-sex couples" [@turner2013].
+
+```{r}
+#| label: Harris County Voter Districts 
+#| fig-cap: Harris County Voter Districts
+#| lst-label: lst-plot
+#| lst-cap: Listing caption
+
+pcts %>%
+  ggplot() +
+  geom_sf() +
+  geom_sf(data = roads) +
+  geom_sf(data = polls, size = 1, shape = 18, color = "red3") +
+  theme_urbn_map()
+  ggsave("imgs/hc_pcts.png", width = 6, height = 4, dpi = 300)
+```
+
+## Data Collection
+
+Voter precinct boundaries, voting poll locations, and major road shapes (Figure 1) were downloaded from the Harris County OpenData portal [@harrisc]. I used the `sf` R package to store and convert the shapefiles for spatial analysis. I obtained election results for the March 2026 Democratic and Republican primaries from the Harris County Clerk's Office via the Official Canvass Report [@harriscountyclerk]. Precinct-level vote tallies were manually entered from the report PDF to a spreadsheet, converted to a CSV file, then loaded into R as data frames. Further tidying was conducted to create (1) total primary activity (Democrat + Republican ballot tallies), (2) voter turnout (total tallies / eligible voters), (3) candidate vote share. Voter turn out and candidate vote share were both stored as proportions to be used in further calculations.
+
+Census Tract boundaries were obtained using the `censable` R package based on the 2020 U.S. Census tract-boundary assessment [@kenny]. `censable` created a data set of population statistics for each census tract in Harris County using 2020 decennial census data via `censusapi` package [@recht], importantly the data set contains the racial cross tabs for total population and voting-aged population (VAP).[^1] Additionally, each demographic variable divided against total population to create residential proportions. This data set was joined with more tract-level census data obtained from the `tidycensus` package [@walker] (e.g, median household income, education level, % with home internet access) via GEOID. As highlighted by [@rochon2020], Census tracts were used as the unit of analysis since most meaningful demographic variables are not recorded and/or publicly available at smaller scales of measurement like census blocks. A full list of variables and their descriptions can be found in the *Appendix A*).
+
+[^1]: The voting-age population (VAP) is defined by the Census Bureau as everyone residing in the United States, age 18 and older. This differs from the voting-eligible population (VEP) coined by [@mcdonald2022] to describe the population that is *eligible* to vote excluding those who are counted in the VAP who are ineligible to vote; non-citizens, felons (varies), and mentally incapacitated persons, or unable to vote; servicepeople or civilians living overseas.
+
+**Crosswalking**
+
+Census geograpahy is made up of either tracts and blocks, used to tabulate demography. Voting districts (VTD) on the other hand, are geographies created by a non-Census entity to administer an election [@u.s.censusbureau1994]. As such, there is not a one-to-one relationship between the boundaries of Census tracts and VTDs and it is necessary to estimate the demographic characteristics of voter districts According to Amos et al. [-@amos2017], there are four methods to merge spatial data when precinct and census boundaries are non-conforming: areal weighting, dasymetric mapping, point kriging, and kriging-based areal interpolation. They found that dasymetric mapping was the best option because it improved the error and fit of the general process @amos2017 [p. 396]. This study will also use dasymetric mapping, weighting by population density instead of land use. The process is described below:
+
+1.  Trim the block group shapefile by precincts.
+2.  Calculate the area of each block, weighting by population density.
+3.  Perform a union between the shapefile to create polygons for group and precinct.
+4.  Calculate the area of each polygon, weighting by population density.
+5.  Divide each union shapefile are group.
+6.  Multiply this proportion by the attribute of interest for each block group.
+7.  Sum the quantities calculated in step 6 by precinct.
+
+<!--# rewrite section, stole this -->
+
+At the time of this study, VTD identifiers were not included within census demographic data sets provided by the US Census Bureau at the census tract level. And while this study attempted to define census tract boundaries by geocoded voter registration data, it was not an accurate method for summarizing the data sets since multiple census tracts can and do exist within a single voting precinct and this relationship must be one to one, not one to many. Election and census data were therefore merged based on largest areal overlap using the sf package in R (Figure 2). It is important to note four census tracts did not constitute a majority of any of the voter districts and were therefore removed from the spatial layer and final analysis: tracts 221.02, 224, 229.02 and 262.02.
+
+Finally, the non-spatial election results and census demographics were merged to this spatial data frame shown in Figure 2 and exported as a shapefile to be used for spatial statistical analysis. The shapefile contained a total of forty-five discrete voting precinct boundaries, each defined by one of twenty-eight census tracts and attributed with the percent Democrat vote and percent demographic variable distributions. This shapefile was used as the basis for statistical analysis outlined in the following section.
+
+## Project Design
+
+### Moran's $I$ Testing
+
+The fundamental goal of this study is the degree to which similar demographic and electoral variables tend to occur near each other. The most common method to assess spatial autocorrelation in areal data is Moran’s $I$ testing [@moran1950a, @moraga]. I will Moran's $I$ test the variables of interest using the `spdep` R package. Specifically, I will conduct a Local Moran's $I$ test. Where Global Moran's $I$ produces one measure of the overall clustering of the spatial data, the test assumes that spatial autocorrelation is homogeneous across the entire study area. I want to identify any potential clusters or anomalies in the study area. However, I calculate Local Indicators of Spatial Association (LISA) to decompose the global measure, calculating Local Moran's $I$ for each spatial unit to (1) identify clustered units (high-high or low-low) and (2) identify outlying units (high-low or low-high), and (3) measure the influence of the unit on the magnitude of the global statistic [@anselin1995]. The Global Moran's $I$ is defined as:
+
+$$
+I = \frac{N}{S_0} \cdot \frac{\sum_{i=1}^{N} \sum_{j=1}^{N} w_{ij} (x_i - \bar{x})(x_j - \bar{x})}{\sum_{i=1}^{N} (x_i - \bar{x})^2}
+$$
+
+where $N$ is the number of spatial units (e.g., VTDs, census tracts) indexed by $i$ (unit) and $j$ (neighboring units); $x$ is the variable of interest; $\bar{x}$ is the mean of $x$; $w_{ij}$ are the elements of a matrix of spatial weights with zeroes on the diagonal (e.g., $w_{ii} = 0$); so $S_0 = \sum_{i=1}^{N} \sum_{j=1}^{N} w_{ij}$ or the global sum of weights. The relationship between $i$ and $j$ is the between the value of a unit and the sum of the values of $i$'s neighboring units, or spatial lag. Since both VTDs and tracts are irregular polygons, Queen-based contiguity as used to construct spatial weights, meaning units were considered neighbors if the shared a border greater than zero, even if it was a corner [@anselin2023].
+
+## Descriptive Analysis
+
+Race and income were selected as the primary variables of interest in this study because of the anecdotal existence is the "Houston Arrow." While Houston is incredibly diverse, the 7th largest big city in the country, it remains incredibly segregated. Historic redlining practices and freeway development, split the city apart, separating its racial communities and creating cleavages that still remain today. The Houston Arrow is colloquially used to refer to the western half of the city. The term has risen in popularity due to the arrow-like shape that forms when mapping socioeconomic data in the city. The area contains many of the city's wealthiest, whitest, and most connected enclaves. According to analysis by the Kinder Institute for Urban Research tends to be have drastically different value indexes than the immediately surrounding area and rest of the city, that "diversity" is complicated on a county-wide scale [@leahbinkovitz2016]. That
+
+1.  Majority-Hispanic neighborhoods are likely to have Whites or Blacks as the second-most populous group in the area,
+2.  Majority-White neighborhoods are likely to have Hispanics as the second-most populous group. It’s unlikely Blacks will be the number two group in a white neighborhood.
+3.  Majority-Black neighborhoods are likely to have Hispanics as the second-most population group. It’s unlikely that Whites will be the number two group in a Black neighborhood.
+
+All this together means creates a face-value appearance that racial networks are spatially insulated and highly clustered. Anderson and Simburger found a moderate degree of clustering for residential minority population share but the clustering measure of percent Black and Hispanic were far greater than the clustering for percent Asian (the only other substantial minority group) [-@anderson2025 p. 6]. This supports prior conclusions that all non-White groups became increasingly segregated from Whites and increasingly integrated with one another [@strait2010] and that barriers like highways are associated with greater ethnoracial segregation and physical divisions manifest as perceived distinctions between groups and and interethnic social connection [@roberto2021].
+
+### Demography
+
+```{r}
+#| label: Harris County Census Data
+#| include: false
+
+# define RData path
+census_data_path <- "~/Projects/dpi610/final/data/harris_county_census_data.RData"
+
+if (file.exists(census_data_path)) { # if file exists in data dir
+  message("Loading cached census data...")
+  load(census_data_path) # load from RData 
+} else {
+  message("Building census data from source...") 
+  source("scripts/3_harrisCensus.R") # run API calls
+}
+```
+
+```{r}
+#| label: Harris County Census Maps
+#| include: false
+source("scripts/3b_censusMaps.R")
+
+# p0: Tract-level Population Density Map
+# p1-p3: Population Share Maps (White, Black, Hispanic)
+```
+
+```{r}
+#| fig-subcap: 
+#|   - "Census Tract Population Share: White"
+#|   - "Census Tract Population Share: Black"
+#|   - "Census Tract Population Share: Hispanic"
+#| fig-width: 8
+
+p1
+p2
+p3
+```
+
+### Voter Turnout
+
+```{r}
+#| label: Map Turnout, Precinct-Level
+#| fig-cap: Precinct-Level Voter Turnout, 2026 Harris County Democratic Primary
+#| fig-width: 7
+
+hcVotes_2026 <- st_as_sf(hcVotes_2026)
+
+turnout_map <- hcVotes_2026 %>%
+  filter(turnout <= 1) %>%
+  ggplot() +
+  geom_sf(data = hcVotes_2026) +
+  geom_sf(aes(fill = turnout)) +
+  scale_fill_viridis_c(
+    option = "turbo",
+    direction = 1,
+    breaks = c(0, 0.2, 0.4, 0.7, 1),
+    labels = scales::percent_format(accuracy = 1)
+  ) +
+  labs(fill = "Voter Turnout") +
+  theme(legend.position = "right") +
+  theme_urbn_map(scale = "continuous", base_size = 8.5)
+
+turnout_map
+```
+
+### Candidate Vote Share
+
+```{r}
+#| label: Candidate Results, Precinct-Level
+source("scripts/2b_pctResults.R")
+```
+
+```{r}
+#| label: Map Vote Share, Precinct-Level
+#| fig-cap: Precinct-Level Vote Share, 2026 Harris County Democratic Primary
+#| fig-width: 7
+
+vote_share_map <- ggplot(precinct_results) +
+  geom_sf(aes(fill = str_to_title(winner), alpha = vote_share),
+          color = "white", linewidth = 0.1) +
+  scale_fill_manual(
+    values = c(
+      "James Talarico"   = "blue",
+      "Jasmine Crockett" = "purple",
+      "Ahmad R. Hassan"  = "orange"
+    )
+  ) +
+  scale_alpha_continuous(range = c(0.3, 1.0), guide = "none") +
+  labs(
+    caption  = "Intensity = Winner's vote share",
+    fill     = "Candidate"
+  ) +
+  theme(legend.position = "right") +
+  theme_urbn_map(scale = "continuous", base_size = 8.5)
+
+vote_share_map
+```
+
+# Results
+
+# Discussion
+
+# Conclusion
+
+\newpage
+
+# References

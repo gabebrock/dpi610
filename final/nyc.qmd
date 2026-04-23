@@ -1,0 +1,125 @@
+---
+title: "nyc"
+format: pdf
+---
+
+```{r}
+#| label: config
+#| include: false
+
+check_pkg <- function(pkg) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+  }
+  library(pkg, character.only = TRUE)
+}
+
+check_pkg("sf")
+check_pkg("tidyverse")
+check_pkg("urbnthemes") 
+  lato_import()
+
+```
+
+```{r}
+
+#| label: NYC Election Districts
+#| fig-height: 8
+
+# define the GeoJSON URL
+#' https://hub.arcgis.com/datasets/537abe59c1fb439c84283f5dc8f3f58a_0/about
+geojson_url <- "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/NYC_Election_Districts/FeatureServer/0/query?outFields=*&where=1%3D1&f=geojson"
+
+# read the GeoJSON from the URL
+nyc_pcts <- st_read(geojson_url)
+
+nyc_pcts %>%
+  ggplot(aes()) +
+  geom_sf() +
+  theme_urbn_map(scale = "continuous", base_size = 8.5,
+  base_family = "Lato", base_line_size = 0.5, base_rect_size = 0.5)
+
+
+```
+
+```{r}
+#| label: 2025 Mayoral Election Data
+#| echo: false
+
+mayor2025 <- read_csv("data/edLevelTallys2026.csv")
+glimpse(mayor2025)
+```
+```{r}
+#| label: Tidy Election data
+#| warning: false
+
+# add Party assignments for candidate rows
+mayor2025 <- mayor2025 %>%
+  mutate(party = case_when(
+          str_detect(`Unit Name`, regex("Democratic", ignore_case = TRUE)) ~ "Democratic",
+          str_detect(`Unit Name`, regex("Republican", ignore_case = TRUE)) ~ "Republican",
+          str_detect(`Unit Name`, regex("Conservative", ignore_case = TRUE)) ~ "Conservative",
+          str_detect(`Unit Name`, regex("Working Families", ignore_case = TRUE)) ~ "Working Families",
+          str_detect(`Unit Name`, regex("Protect Animals", ignore_case = TRUE)) ~ "Protect Animals",
+          str_detect(`Unit Name`, regex("Safe&Affordable", ignore_case = TRUE)) ~ "Safe&Affordable/EndAntiSemitism",
+          str_detect(`Unit Name`, regex("Quality of Life", ignore_case = TRUE)) ~ "Quality of Life",
+          str_detect(`Unit Name`, regex("Fight and Deliver", ignore_case = TRUE)) ~ "Fight and Deliver",                str_detect(`Unit Name`, regex("Integrity", ignore_case = TRUE)) ~ "Integrity",
+  ),
+  candidate = if_else(
+     str_detect(`Unit Name`, regex("\\(")),
+     str_remove(`Unit Name`, " \\(.*\\)"),
+     NA_character_
+    ),
+  ballotType = case_when(
+    `Unit Name` == "Public Counter" ~ "Regular",
+    `Unit Name` == "Manually Counted Emergency" ~ "Emergency",
+    `Unit Name` == "Absentee / Military" ~ "Absentee",
+    `Unit Name` == "Affidavit" ~ "Affidavit",
+    `Unit Name` == "Scattered" ~ "Scattered",
+    TRUE ~ NA_character_
+    ),
+  party_major = case_when(party %in% c("Democratic", "Working Families") ~ "Democratic",
+                                 party == "Republican" ~ "Republican",
+                                 TRUE ~ "Other")
+  )
+
+# mayor2025 %>% head(n = 25) %>% view()
+
+mayor2025 <- mayor2025 %>%
+  mutate(EDAD = paste(0, ED, "/", AD, sep = ""), # ED/AD formatted like NYC BoE
+         ElectDist = paste0(AD, str_pad(ED, width = 3, pad = "0"))) %>% # ED formatted for sf
+  mutate(ElectDist = as.integer(ElectDist))
+   
+combinedEDADs <- mayor2025 %>%
+  filter(str_detect(`EDAD Status`, regex("COMBINED INTO", ignore_case = TRUE)))
+
+# if `EDAD Status` for `EDAD` contains COMBINED INTO
+  # look at the `EDAD` at the end of the str `EDAD Status` then
+  # gather the `Unit Name` and `Tally` for the row and 
+  # add it to the corresponding `Unit Name` and `Tally` of the EDAD it was combined into
+
+```
+
+```{r}
+#| label: Join Election data to Precinct data
+
+nyc_pcts %>%
+  left_join(
+    mayor2025 %>%
+      select(ElectDist, candidate, party, Tally, party_major) %>%
+      filter(!is.na(candidate)),
+    by = "ElectDist"
+  ) %>%
+  ggplot(aes(fill = party_major)) +
+  geom_sf() +
+  theme_urbn_map(
+    scale = "discrete",
+    base_size = 8.5,
+    base_family = "sans",
+    base_line_size = 0.5,
+    base_rect_size = 0.5
+  )
+
+```
+
+

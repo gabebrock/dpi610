@@ -1,0 +1,419 @@
+---
+title: "houston"
+format: pdf
+
+echo: false
+warning: false
+
+fig-align: center
+fig-width: 7
+fig-height: 5
+---
+
+```{r setup}
+#| include: false
+
+# list all packages required for project
+pkgs <- c("sf", "tidyverse", "kableExtra", "urbnthemes",
+          "censable", "cvap", "patchwork", "extrafont", "magrittr",
+          "haven", "tigris")
+
+# define function to check install and load pkgs
+check_pkgs <- function(pkgs) {
+  for (pkg in pkgs) { # for each package
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+       install.packages(pkg) }
+    library(pkg, character.only = TRUE)
+  }
+}
+
+check_pkgs(pkgs)
+sf_use_s2(FALSE)  # use planar geometry; avoids edge cases with s2 spherical geometry
+```
+
+```{r harris county GIS setup}
+#| incldue: false
+
+if (file.exists("data/gis-harris.rda")) {
+  # cat("Harris Counter GIS data exists already. Reading to env")
+  load("data/gis-harris.rda")
+} else {
+  # read Harris Counter voter precincts and polling locations
+  # cat("The file does not exist. Getting GIS data.")
+  url <- "https://www.gis.hctx.net/arcgis/rest/services/Voting/VotingPct/MapServer/0/query?where=1=1&outFields=*&f=geojson"
+  pcts <- st_read(url)
+  url <- "https://www.gis.hctx.net/arcgis/rest/services/Voting/VotingPolls/MapServer/0/query?where=1=1&outFields=*&f=geojson"
+  polls <- st_read(url)
+  url <- "https://services3.arcgis.com/FsUrhUGHe9VfghT8/arcgis/rest/services/Harris_County_Highways/FeatureServer/0/query?where=1=1&outFields=*&f=geojson"
+  roads <- st_read(url)
+  save(pcts, polls, roads, file = "data/gis-harris.rda")
+}
+```
+
+# Introduction
+
+In March 2026, Texas State Representative James Talarico of Austin became the stat Democratic Party's nominee for United States Senate defeating US Representative Jasmine Crockett of Dallas. The Democratic Primary for US Senate was one of the most contentious state-wide elections in recent history. There are several prevailing theories about what won Talarico the election, his ability to energize young progressives or Hispanics, but it is clear that he captured a huge portion of the vote share in the most densely-populated region of the state. 
+
+The Texas Triangle, one of eleven megaregions of the United States, contains the state's five largest cities Dallas–Fort Worth, Greater Houston, San Antonio, and Austin. The Triangle is home to over 70% of the state's population, around 21 million people. Furthermore, much of the state's Democratic vote share is concentrated within the region.
+
+Talarico and Crockett both benefited from home base advantage in their respective cities, Austin and Dallas. Talarico won Travis and Bexar Counties by 51 and 15 points and Crockett won Dallas and Tarrant Counties by a collective 30 points. However, this dynamic converged in the third leg of the Triangle, Houston.
+
+```{r load and prep voter data}
+
+hcVotes_2026 <- read_csv("data/election_results_clean.csv")
+
+# convert columns to integer
+hcVotes_2026 <- hcVotes_2026 %>%
+  mutate(across(everything(), as.integer))
+
+hcVotes_2026 <- hcVotes_2026 %>%
+  select(Precinct, `JAMES TALARICO`, `JASMINE CROCKETT`, `AHMAD R. HASSAN`,
+         `Early Voting`, `Election Day`, `Total Ballots Cast`) %>%
+  left_join(pcts %>% select(OBJECTID, VPCT_txt, VPCT, JP_Constab,
+                            Shape.STArea.., Shape.STLength.., geometry), 
+            by = join_by(Precinct == VPCT))
+
+# get Republican votes so we can tally total votes
+hcVotes_2026R <- read_csv("data/election_results_republican_clean.csv")
+hcVotes_2026R <- hcVotes_2026R %>%
+  select(Precinct, `Total Ballots Cast`) %>%
+  rename(totalVotesR = `Total Ballots Cast`) %>%
+  mutate(Precinct = as.integer(Precinct),
+         totalVotesR = as.integer(totalVotesR))
+
+hc_voters <- read_csv("data/reg_precinct_20240210.csv")
+hc_voters <- hc_voters %>% rename(Precinct = precinct, 
+                                  registerVoters = count_precinct)
+
+hcVotes_2026 <- hcVotes_2026 %>%
+  left_join(hcVotes_2026R, by = join_by(Precinct))
+
+hcVotes_2026 <- hcVotes_2026 %>%
+  left_join(hc_voters, by = join_by(Precinct))
+
+lookup <- c(earlyVoting = "Early Voting", electionDay = "Election Day",
+            totalVotesD = "Total Ballots Cast",
+            constable = "JP_Constab",
+            shape_area = "Shape.STArea..", shape_length = "Shape.STLength..")
+
+hcVotes_2026 <- hcVotes_2026 %>%
+  rename(all_of(lookup))
+
+hcVotes_2026 <- hcVotes_2026 %>%  
+  mutate(totalVotes = totalVotesD + totalVotesR,
+         turnout = totalVotes / registerVoters)
+```
+
+# Who Won
+
+```{r who won the election}
+#| label: who-won
+
+who_won <- hcVotes_2026 %>%
+  pivot_longer(
+    cols = c(`JAMES TALARICO`, `JASMINE CROCKETT`, `AHMAD R. HASSAN`),
+    names_to = "candidate",
+    values_to = "votes"
+  ) %>%
+  group_by(Precinct, candidate) %>%
+  summarize(total_votes = sum(votes, na.rm = TRUE), .groups = "drop") 
+```
+
+```{r vote tally}
+# vote tally
+who_won_tally <- who_won %>%
+  st_drop_geometry() %>%
+  group_by(candidate) %>%
+  summarize(total_votes = sum(total_votes, na.rm = TRUE)) %>%
+  mutate(prop = total_votes / sum(total_votes)) 
+
+who_won_tally # %>%
+  kable("simple")
+```
+
+Rep. Crockett only won Harris County by `r round(who_won_tally$prop[3] - who_won_tally$prop[2], 3) * 100` points, a margin of `r who_won_tally$total_votes[3] - who_won_tally$total_votes[2]` votes. Harris County is not only the most populous county in Texas but the most Democratic. It's county seat, Houston, is the fourth-largest city in the US.
+
+```{r who won each precinct?}
+# who won each precinct?
+who_won_pct <- who_won %>%
+  group_by(Precinct) %>%
+  slice_max(total_votes, n = 1, with_ties = FALSE)
+```
+
+```{r how many precincts did each candidate win?}
+# how many precincts did each candidate win?
+who_won_pct %>%
+  group_by(candidate) %>%
+  count() # %>%
+  kable("simple")
+```
+
+## Vote Share
+
+```{r largest precinct-level vote share}
+# largest precinct-level vote share (precincts > 10 votes)
+who_won %>%
+  group_by(Precinct) %>%
+  mutate(tally = sum(total_votes),
+         vote_share = total_votes / tally) %>%
+  slice_max(vote_share, n = 1, with_ties = FALSE) %>%
+  filter(total_votes > 10) %>%
+  ungroup() %>%
+  slice_max(vote_share, n = 10, with_ties = FALSE) # %>%
+  kable("simple")
+```
+
+```{r smallest precinct-level vote share}
+# smallest precinct-level vote share (precincts > 10 votes)
+who_won %>%
+  group_by(Precinct) %>%
+  mutate(tally = sum(total_votes),
+         vote_share = total_votes / tally) %>%
+  slice_max(vote_share, n = 1, with_ties = FALSE) %>%
+  filter(total_votes > 10) %>%
+  ungroup() %>%
+  slice_min(vote_share, n = 10, with_ties = FALSE) # %>%
+  kable("simple")
+```
+
+```{r precinct-level vote share map}
+
+# --- Compute winner + vote share per precinct ---
+precinct_results <- hcVotes_2026 %>%
+  mutate(
+    max_votes = pmax(`JAMES TALARICO`, `JASMINE CROCKETT`, `AHMAD R. HASSAN`, na.rm = TRUE),
+    winner = case_when(
+      `JAMES TALARICO` == max_votes ~ "JAMES TALARICO",
+      `JASMINE CROCKETT` == max_votes ~ "JASMINE CROCKETT",
+      `AHMAD R. HASSAN`  == max_votes ~ "AHMAD R. HASSAN"
+    ),
+    vote_share = max_votes / totalVotes
+  )
+
+precinct_results <- st_as_sf(precinct_results)
+
+# --- Map ---
+ggplot(precinct_results) +
+  geom_sf(aes(fill = winner, alpha = vote_share),
+          color = "white", linewidth = 0.1) +
+  scale_fill_manual(
+    values = c(
+      "JAMES TALARICO"   = "blue",
+      "JASMINE CROCKETT" = "purple",
+      "AHMAD R. HASSAN"  = "orange"
+    )
+  ) +
+  scale_alpha_continuous(range = c(0.3, 1.0), guide = "none") +
+  labs(
+    title    = "Precinct-Level Vote Share",
+    subtitle = "2026 Harris County Democratic Primary",
+    caption  = "Intensity = Winner's vote share",
+    fill     = "Candidate"
+  ) +
+  theme(legend.position = "right") +
+  theme_urbn_map(scale = "continuous", base_size = 8.5)
+```
+
+```{r voter turnout}
+hcVotes_2026 <- st_as_sf(hcVotes_2026)
+
+hcVotes_2026 %>%
+  filter(turnout <= 1) %>%
+  ggplot() +
+  geom_sf(data = hcVotes_2026) +
+  geom_sf(aes(fill = turnout)) +
+  scale_fill_viridis_c(
+    option = "turbo",
+    direction = 1,
+    breaks = c(0, 0.2, 0.4, 0.7, 1),
+    labels = scales::percent_format(accuracy = 1)
+  ) +
+  labs(fill = "Voter Turnout") +
+  theme(legend.position = "right") +
+  theme_urbn_map(scale = "continuous", base_size = 8.5)
+```
+
+## Harris County Demography
+
+```{r Harris County Voter Precincts}
+#| label: Harris County Voter Precincts 
+#| fig-cap: Harris County Voter Precincts 
+
+pcts %>%
+  ggplot() +
+  geom_sf() +
+  geom_sf(data = roads) +
+  geom_sf(data = polls, size = 1.5, shape = 18, color = "red3") +
+  labs(
+    caption  = "Red Icon = Polling Location",
+    fill     = "Candidate"
+  ) + 
+  theme_urbn_map()
+  ggsave("imgs/hc_pcts.png", width = 6, height = 4, dpi = 300)
+```
+
+```{r Harris County Census Data}
+#| label: Harris County Census Data
+#| include: false
+
+#' Creates a dataset, using the decennial census information, with the standard variables used for redistricting. 
+hc <- censable::build_dec(geography = 'tract', # get tract-level data
+                          state = 'TX', county = 'Harris County', # for Harris County, TX
+                          geometry = TRUE) # include tract sfs
+
+hc_blocks <- censable::build_dec(geography = 'block', # get block-level data
+                          state = 'TX', county = 'Harris County', # for Harris County, TX
+                          geometry = TRUE) # include block sfs
+
+#' Collapse Full Race Categories into 4 Categories
+#' Collapses Other, AIAN, Asian, NHPI, and Two+ into other. 
+hc_4cat <- hc %>% collapse4(prefix = c('pop_', 'vap_')) 
+
+```
+
+```{r 4-category race splits for Census Data}
+#| label: hc-4cat-race-shares
+
+# Create race-share variables (as proportions) for total population and VAP
+hc_4cat <- hc_4cat %>%
+  mutate(
+    # percent population
+    pct_white = pop_white / pop,
+    pct_black = pop_black / pop,
+    pct_hisp  = pop_hisp  / pop,
+    pct_other = pop_other / pop,
+    # percent VAP
+    pct_vap_white = vap_white / vap,
+    pct_vap_black = vap_black / vap,
+    pct_vap_hisp  = vap_hisp  / vap,
+    pct_vap_other = vap_other / vap
+  )
+```
+
+```{r Harris County Population Density}
+#| label: hc-density-and-race-maps
+#| fig-cap: Harris County Population Density
+
+# Population density map (per sq km)
+hc_4cat %>%
+  mutate(pop_density = pop / (as.numeric(st_area(.)) / 1e6),
+         vap_density = vap / (as.numeric(st_area(.)) / 1e6)) %>%
+  filter(pop > 50) %>%
+  ggplot() +
+  geom_sf(aes(fill = pop_density)) +
+  scale_fill_viridis_c(option = "turbo", 
+                       direction = 1, trans = "log") +
+  labs(fill = "Population Density (Log)") + 
+  theme_urbn_map(scale = "continuous", base_size = 8.5,
+  base_family = "sans", base_line_size = 0.5, base_rect_size = 0.5) +
+  theme(legend.position = "right")
+  ggsave("imgs/hc_pop_dens.png", width = 6, height = 4, dpi = 300)
+
+# Race share maps (proportions)
+# Percent White (population)
+p1 <- hc_4cat %>%
+  filter(pop > 50) %>%
+  ggplot() +
+  scale_fill_viridis_c(option = "turbo", direction = 1) +
+  geom_sf(aes(fill = pct_white)) +
+  labs(fill = "Population % White") + 
+  theme(legend.position = "bottom") +
+  theme_urbn_map(scale = "continuous", base_size = 8.5,
+  base_family = "sans", base_line_size = 0.5, base_rect_size = 0.5)
+
+# Percent Black (population)
+p2 <- hc_4cat %>%
+  filter(pop > 50) %>%
+  ggplot() +
+  scale_fill_viridis_c(option = "turbo", direction = 1) +
+  geom_sf(aes(fill = pct_black)) +
+  labs(fill = "Population % Black") + 
+  theme(legend.position = "bottom") +
+  theme_urbn_map(scale = "continuous", base_size = 8.5,
+  base_family = "sans", base_line_size = 0.5, base_rect_size = 0.5)
+
+# Percent Hispanic (population)
+p3 <- hc_4cat %>%
+  filter(pop > 50) %>%
+  ggplot() +
+  scale_fill_viridis_c(option = "turbo", direction = 1) +
+  geom_sf(aes(fill = pct_hisp)) +
+  labs(fill = "Population %\nHispanic") + 
+  theme(legend.position = "bottom") +
+  theme_urbn_map(scale = "continuous", base_size = 8.5,
+  base_family = "sans", base_line_size = 0.5, base_rect_size = 0.5)
+
+```
+
+# Opportunity Atlas Data
+
+```{r load-2020-OA-tx}
+if (!exists("atlas_hc_2020")) { # if 2020 OA df doesn't exist in env
+  source("~/Projects/dpi610/final/helpers/crosswalk-tract2010_2020.R") } # run crosswalk
+```
+
+```{r}
+#| label: atlas-tx-map
+hc_4cat %>%
+  mutate(GEOID = as.character(GEOID)) %>%
+  left_join(atlas_hc_2020, by = join_by(GEOID == GEOID_TRACT_20)) %>%
+  filter(pop > 50 & kfr_pooled_pooled_p25 > 0) %>%
+  ggplot() +
+  geom_sf(aes(fill = kfr_pooled_pooled_p25 )) + 
+  scale_fill_viridis_c(option = "magma", direction = 1) +
+  theme_urbn_map(scale = "continuous", base_size = 8.5)
+```
+
+# Zip Codes
+
+```{r get Harris County Zip Code geometries}
+hc_zcta <- zctas(state = "TX", year = 2010) %>%
+  st_filter(counties(state = "TX") %>% filter(NAME == "Harris"))
+
+plot(hc_zcta$geometry)
+```
+
+```{r}
+sc_data <- read_csv("~/Projects/dpi610/final/data/social_capital.csv") # read social capital data file
+
+setdiff(unique(hc_zcta$ZCTA5CE00), unique(sc_data$zip))
+
+hc_sc <- hc_zcta %>%
+  select(ZCTA5CE10, geometry) %>%
+  left_join(sc_data %>% mutate(zip = as.character(zip)), 
+            by = join_by(ZCTA5CE10 == zip))
+
+hc_sc %>%
+  ggplot() +
+  geom_sf(aes(fill = ec_zip)) +
+  scale_fill_viridis_c(option = "viridis", direction = 1) +
+  theme_urbn_map(scale = "continuous", base_size = 8.5)
+```
+
+```{r}
+# assign each tract to one zip
+
+hc_zcta_xwalk <- st_intersection(
+  hc %>% select(GEOID) %>% st_make_valid(),
+  hc_sc %>% select(ZCTA5CE10) %>% st_make_valid() %>% st_transform(st_crs(hc))
+) %>%
+  mutate(overlap_area = as.numeric(st_area(geometry))) %>%
+  st_drop_geometry() %>%
+  group_by(GEOID) %>%
+  slice_max(order_by = overlap_area, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(GEOID, ZCTA5CE10)
+
+hc_with_zip <- hc %>%
+  mutate(GEOID = as.character(GEOID)) %>%
+  left_join(hc_zcta_xwalk, by = "GEOID")
+
+hc_with_zip %>%
+  ggplot() +
+  geom_sf(aes(fill = ZCTA5CE10.x)) +
+  scale_fill_viridis_d(option = "viridis", direction = 1) +
+  theme_urbn_map(scale = "discrete", base_size = 8.5) +
+  theme(legend.position = "none")
+```
+
+

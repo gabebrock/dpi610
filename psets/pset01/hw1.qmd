@@ -206,6 +206,7 @@ fl_acs <- tibble(race = race_fl,
 ```{r}
 
 fl <- fl %>%
+<<<<<<< HEAD
   mutate(race = recode_values(race, "B" ~ "Black", # recode race in fl to match fl_acs
                                     "W" ~ "White", 
                                     "H" ~ "Hispanic", 
@@ -216,6 +217,14 @@ fl <- fl %>%
 ```{r}
 
 fl_demos <- fl %>%
+=======
+  mutate(race = recode(race, "B" = "Black", # recode race in fl to match fl_acs
+                             "W" = "White", 
+                             "H" = "Hispanic", 
+                             "O" = "Other"))
+
+fl %>%
+>>>>>>> 380e2123be084bb1a517b5bf54a37aac432d8b96
   group_by(race) %>% # group by race (B,W,H,O)
   summarize(n = n()) %>% # count number of voters of each race
   mutate(pct_vote = (round(n / sum(n), 3))*100) %>%
@@ -328,6 +337,7 @@ Are gender, marriage, age and race balanced between treatment and control?
 
 ```{r}
 
+<<<<<<< HEAD
 fl_2e_demo <- fl %>%
   group_by(treat) %>%
   summarize(female = mean(female, na.rm = TRUE),
@@ -348,6 +358,24 @@ fl_2e <- fl_2e_demo %>%
 
 fl_2e %>%
   round(2)
+=======
+#' save a table of the racial proportion of the 
+#' florida voter control and treatment groups
+fl_race_pcts <- fl %>% # save to environment
+  group_by(treat, race) %>% # group by treat group then race
+  summarize(n = n()) %>% # count number of voters of each race
+  mutate(pct = (round(n / sum(n), 4))) %>% # calculate the within-group prop.
+  select(!n) %>% # drop total number 
+  pivot_wider(names_from = race, values_from = pct, # pivot wider for merge
+              names_prefix = "race.")
+
+fl %>% 
+  group_by(treat) %>% 
+  summarize(female  = round(mean(female, na.rm = TRUE), 4),
+            married = round(mean(married, na.rm = TRUE), 4)) %>%
+  left_join(fl_race_pcts, by = join_by(treat))
+  
+>>>>>>> 380e2123be084bb1a517b5bf54a37aac432d8b96
 
 ```
 
