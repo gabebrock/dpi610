@@ -32,3 +32,5 @@ if (file.exists("data/gis-harris.rda")) {
   roads <- st_read(url)
   save(pcts, polls, roads, file = "data/gis-harris.rda")
 }
+
+.setup_complete <- TRUE
