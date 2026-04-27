@@ -23,12 +23,7 @@ format:
 bibliography: references.bib
 
 abstract: |
-  A clear and well-documented \LaTeX\ document is presented as an
-  article formatted for publication by ACM in a conference proceedings
-  or journal publication. Based on the "acmart" document class, this
-  article presents and explains many of the common variations, as well
-  as many of the formatting elements an author may use in the
-  preparation of the documentation of their work.
+  This study investigates how geography structures voter behavior in the 2026 Texas Democratic U.S. Senate primary in Harris County. Combining 2020 Census tract data with precinct‑level election returns via dasymetric crosswalking, I examine spatial distributions of race, income, turnout, and candidate vote share. Using Moran’s I and Local Indicators of Spatial Association, I assess clustering and spatial autocorrelation for demographic variables and support for James Talarico and Jasmine Crockett. Results show strong positive spatial autocorrelation in racial composition and candidate vote share, revealing geographically entrenched partisan coalitions and highlighting how racial segregation shapes intra‑party competition within a diversifying urban county.
 
 # document settings
 echo: false
@@ -59,7 +54,7 @@ Talarico and Crockett both benefited from home base advantage in their respectiv
 
 Spatial autocorrelation is the extent to which a variable is correlated with itself through space. Tobler's First Law of Geography tells us that “everything is related to everything else, but near things are more related than distant things” [@tobler1970]. As such, we expect place to have a causal effect on voter behavior [@gimpel2004].
 
-In metropolitan areas, observations (at the unit- and individual-level) are often clustered together. People live near people like them. Regardless of the variable of interest, such as racial residential composition (e.g., % Black), median household income (MHI), education level, there is a general tendency for nearby observations to have similar values, especially within urban areas. Within political boundaries, there is significant clustering of key socioeconomic variables [@frank2002]. Due to the inherent density of urban areas, since VTDs in Harris County are drawn to each have "a population between 100 – 5000 registered voters" [@harriscountyofficeofcountyadministration], the districting process creates relatively heterogeneous rural districts and small, homogeneous urban districts that bring together "proximate individuals with highly correlated preferences" [@rodden2010, p 332].
+In metropolitan areas, observations (at the unit- and individual-level) are often clustered together. People live near people like them. Regardless of the variable of interest, such as racial residential composition (e.g., % Black), median household income (MHI), education level, there is a general tendency for nearby observations to have similar values, especially within urban areas. Within political boundaries, there is significant clustering of key socioeconomic variables [@frank2002]. Due to the inherent density of urban areas, since VTDs in Harris County are drawn to each have "a population between 100 and 5,000 registered voters" [@harriscountyofficeofcountyadministration], the districting process creates relatively heterogeneous rural districts and small, homogeneous urban districts that bring together "proximate individuals with highly correlated preferences" [@rodden2010, p 332].
 
 However, the natural contentedness of spatial networks even in dense, urban areas is influenced by involuntary racial/ethnic/class-based residential segregation [@anderson2021]. Negative spatial autocorrelation occurs when observations with dissimilar values are dispersed [@moraga]. Positive spatial autocorrelation occurs when observations with similar values are clustered. Urban networks are often characterized by High-High and Low-Low autocorrelation wherein areas with of high or low values are surrounded by areas that or similar values (e.g., a high-income neighborhood surrounded by other high-income neighborhoods).
 
@@ -275,6 +270,68 @@ vote_share_map
 ```
 
 # Results
+
+```{r}
+source("scripts/descriptives.R")
+```
+
+```{r}
+#| fig-cap: Descriptive Statistics — Demographics by Precinct
+#| fig-width: 7
+
+knitr::kable(summary_stats)
+```
+
+```{r}
+#| fig-cap: Distribution of Demographic Variables Across Harris County Precincts
+
+density_grid + plot_annotation(
+  subtitle = "Each panel shows histogram + kernel density estimate"
+)
+```
+
+```{r}
+#| fig-cap: Correlation Matrix, Demographic Variables
+
+corrplot(cor_matrix,
+         method     = "color",
+         type       = "upper",
+         addCoef.col = "black",
+         tl.col     = "black",
+         tl.srt     = 45,
+         number.cex = 0.8,
+         col        = COL2("RdBu", 200),
+         mar        = c(0, 0, 2, 0))
+```
+
+```{r}
+#| label: Global Moran's I Testing
+source("scripts/moransTests.R")
+
+#' `pct_morans`: `precinct_results` excluding VTDs with empty geographies [df]
+#' `nb_demo` and `lw_demo`: spatial weights matrix for demographic data [df]
+#' `nb_elec` and `lw_elec`: spatial weights matrix for election data [df]
+#' `run_morans()`: global Moran's I function
+#' `demo_vars`: [list]
+```
+
+```{r}
+#| label: Global Moran's I Table
+#| tbl-cap: Global Moran's 1, Demographics and Vote Share
+
+demo_results %>%
+  knitr::kable(
+    col.names = c("Variable", "Moran's I", "E[I]", "Z-Score", "p-value", "Sig. (p < .05)"),
+    digits = 2,
+    align = "rccccc",
+    booktabs = TRUE,
+    caption = "Table X: Global Moran's I — Demographic Variables"
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    latex_options = c("striped", "hold_position"))
+```
+
 
 # Discussion
 
